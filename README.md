@@ -1,10 +1,8 @@
 # BALLFiN-BE
 BALLFiN 백엔드 Repo
 
-# requirements
+## requirements
 pip install -r requirements.txt
 
-# backend start
+## run backend server
 uvicorn app.main:app --reload
-
-# frontend start
