@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>메인 페이지</title>
+</head>
+<body>
+  <h1>뉴스 & 공시 게시판</h1>
+  <div id="content"></div>
+
+  <!-- ✅ 게시판 필터 UI -->
+  <h2>🗂️ 뉴스 & 공시 게시판</h2>
+  <select id="feed-type" onchange="loadFeed()">
+    <option value="all">전체</option>
+    <option value="news">뉴스만</option>
+    <option value="disclosure">공시만</option>
+    <option value="favorites">즐겨찾기 기업만</option>
+  </select>
+  <ul id="feed-list"></ul>
+
+  <!-- ✅ 기업 목록 UI -->
+  <h2>전체 기업 목록</h2>
+  <ul id="company-list"></ul>
+
+  <!-- ✅ 기능 버튼 -->
+  <button onclick="logout()">로그아웃</button>
+  <button onclick="removeToken()">토큰 삭제</button>
+  <button onclick="checkToken()">토큰 유효성 확인</button>
+
+  <script>
+    const token = localStorage.getItem("access_token");
+
+    // ✅ 로그인 인증 체크 + 초기 데이터 로딩
+    (async function checkAccess() {
+      if (!token) {
+        alert("로그인이 필요합니다.");
+        window.location.href = "index.html";
+        return;
+      }
+
+      try {
+        const res = await fetch("http://localhost:8000/auth/check", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error("토큰 유효성 실패");
+
+        const data = await res.json();
+        document.getElementById("content").innerText = data.message;
+
+        loadCompanies();
+        loadFeed();
+      } catch (err) {
+        alert("유효하지 않은 토큰입니다. 다시 로그인 해주세요.");
+        localStorage.removeItem("access_token");
+        window.location.href = "index.html";
+      }
+    })();
+
+    // ✅ 전체 기업 + 즐겨찾기 불러오기
+    async function loadCompanies() {
+			const token = localStorage.getItem("access_token");
+      const [companyRes, favRes] = await Promise.all([
+        fetch("http://localhost:8000/user/companies", {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch("http://localhost:8000/user/favorites", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      const companies = await companyRes.json();
+      const favorites = (await favRes.json()).favorites;
+      renderCompanyList(companies, favorites);
+    }
+
+    // ✅ 기업 목록 렌더링
+    function renderCompanyList(companies, favorites) {
+      const ul = document.getElementById("company-list");
+      ul.innerHTML = "";
+
+      companies.forEach((company) => {
+        const li = document.createElement("li");
+        const isFav = favorites.includes(company.ticker);
+
+        li.innerHTML = `
+          <strong>${company.name}</strong> (${company.ticker})
+          <button onclick="${isFav
+            ? `removeFavorite('${company.ticker}')`
+            : `addFavorite('${company.ticker}')`
+          }">
+            ${isFav ? "❌ 삭제" : "⭐ 추가"}
+          </button>
+        `;
+        ul.appendChild(li);
+      });
+    }
+
+    // ✅ 즐겨찾기 추가
+    async function addFavorite(ticker) {
+			const token = localStorage.getItem("access_token");
+      await fetch("http://localhost:8000/user/favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ ticker })
+      });
+      loadCompanies();
+      loadFeed();
+    }
+
+    // ✅ 즐겨찾기 제거
+    async function removeFavorite(ticker) {
+			const token = localStorage.getItem("access_token");
+      await fetch("http://localhost:8000/user/favorites", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ ticker })
+      });
+      loadCompanies();
+      loadFeed();
+    }
+
+    // ✅ 게시판 필터 로딩
+    async function loadFeed() {
+			
+			const token = localStorage.getItem("access_token");
+      const type = document.getElementById("feed-type").value;
+
+      let url = "http://localhost:8000/posts/";
+      if (type === "news") url += "news";
+      else if (type === "disclosure") url += "disclosures";
+      else if (type === "favorites") url += "my-feed";
+      else url += "all";
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        alert("게시판 데이터를 불러올 수 없습니다.");
+        return;
+      }
+
+      const items = await res.json();
+      renderFeed(items);
+    }
+
+    // ✅ 게시글 최신순 렌더링
+    function renderFeed(items) {
+      const ul = document.getElementById("feed-list");
+      ul.innerHTML = "";
+
+      const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      sorted.forEach((item) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <strong>[${item.ticker}]</strong> ${item.title} (${item.date})
+          <span style="color: gray;">[${item.type}]</span>
+        `;
+        ul.appendChild(li);
+      });
+    }
+
+    // ✅ 로그아웃
+    function logout() {
+      localStorage.removeItem("access_token");
+      alert("로그아웃 되었습니다.");
+      window.location.href = "index.html";
+    }
+
+    // ✅ 토큰 삭제
+    function removeToken() {
+      localStorage.removeItem("access_token");
+      alert("토큰이 삭제되었습니다.");
+    }
+
+    // ✅ 토큰 유효성 확인
+    async function checkToken() {
+			const token = localStorage.getItem("access_token");
+      if (!token) {
+        alert("저장된 토큰이 없습니다.");
+        return;
+      }
+
+      const res = await fetch("http://localhost:8000/auth/check", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        alert(`유효한 토큰입니다: ${data.message}`);
+      } else {
+        alert("유효하지 않은 토큰이거나 만료되었습니다.");
+      }
+    }
+  </script>
+</body>
+</html>

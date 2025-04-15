@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>로그인</title>
+</head>
+<body>
+  <h1>로그인</h1>
+  <form id="login-form">
+    <input type="email" id="email" placeholder="이메일" required />
+    <input type="password" id="password" placeholder="비밀번호" required />
+    <button type="submit">로그인</button>
+  </form>
+
+  <p>
+    <button onclick="goToSignup()">회원가입</button>
+  </p>
+
+  <script>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      const res = await fetch("http://localhost:8000/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("access_token", data.access_token);
+        alert("로그인 성공! 메인으로 이동합니다");
+        window.location.href = "main.html";
+      } else {
+        alert("로그인 실패");
+      }
+    });
+
+    function goToSignup() {
+      window.location.href = "signup.html";
+    }
+  </script>
+</body>
+</html>

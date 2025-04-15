@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>회원가입</title>
+</head>
+<body>
+  <h1>회원가입</h1>
+  <form id="signup-form">
+    <input type="email" id="email" placeholder="이메일" required />
+    <input type="password" id="password" placeholder="비밀번호" required />
+    <button type="submit">가입하기</button>
+  </form>
+  <a href="index.html">이미 계정이 있으신가요? 로그인</a>
+
+  <script>
+    document.getElementById("signup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      const res = await fetch("http://localhost:8000/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (res.ok) {
+        alert("회원가입 성공! 로그인 페이지로 이동합니다.");
+        window.location.href = "index.html";
+      } else {
+        const err = await res.json();
+        alert("회원가입 실패: " + err.detail);
+      }
+    });
+  </script>
+</body>
+</html>
