@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from bson import ObjectId
 from datetime import datetime
 from fastapi.responses import StreamingResponse
-from app.services.chat_service import ask_llm, stream_llm, load_chat_history, format_history_to_prompt
+from app.services.chat_service import ask_llm_gpt, stream_llm_gpt, ask_llm_gemini, stream_llm_gemini, load_chat_history, format_history_to_prompt
 
 router = APIRouter()
 
@@ -75,7 +75,12 @@ async def send_message(chat_id: str, msg_in: MessageCreate, current_user: str = 
     # ✅ 답변 생성 (한 번에)
     messages = format_history_to_prompt(history, msg_in.content)
     print(messages)
-    response = await ask_llm(messages)
+    if msg_in.model == "gpt":
+        print("not streaming", msg_in.model)
+        response = await ask_llm_gpt(messages)
+    else:
+        print("not streaming", msg_in.model)
+        response = await ask_llm_gemini(messages)
     assistant_content = response
 
     # ✅ assistant 답변 저장
@@ -117,18 +122,25 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
     
     messages = format_history_to_prompt(history, msg_in.content)
     print(messages)
-    
     async def gpt_response_generator():
         partial_content = ""
-
-        response = await stream_llm(messages)  # 수정!!
-
-        async for chunk in response:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                token = delta.content
-                partial_content += token
-                yield token.encode()
+        if msg_in.model == "gpt":
+            print("streaming", msg_in.model)
+            response = await stream_llm_gpt(messages)
+            async for chunk in response:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    token = delta.content
+                    partial_content += token
+                    yield token.encode()
+        else:
+            print("streaming", msg_in.model)
+            response = await stream_llm_gemini(messages)
+            for chunk in response:
+                if chunk.text:
+                    token = chunk.text
+                    partial_content += token
+                    yield token.encode()
 
         # 답변 저장
         chat_messages.insert_one({
