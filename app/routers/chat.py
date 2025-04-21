@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from bson import ObjectId
 from datetime import datetime
 from fastapi.responses import StreamingResponse
-from app.services.chat_service import ask_llm, stream_llm
+from app.services.chat_service import ask_llm, stream_llm, load_chat_history, format_history_to_prompt
 
 router = APIRouter()
 
@@ -62,7 +62,7 @@ async def send_message(chat_id: str, msg_in: MessageCreate, current_user: str = 
         raise HTTPException(404, "대화방을 찾을 수 없습니다.")
 
     now = datetime.utcnow()
-
+    history = await load_chat_history(chat_id, limit=10)
     # ✅ 사용자 질문 저장
     chat_messages.insert_one({
         "chat_id": ObjectId(chat_id),
@@ -73,7 +73,9 @@ async def send_message(chat_id: str, msg_in: MessageCreate, current_user: str = 
     })
 
     # ✅ 답변 생성 (한 번에)
-    response = await ask_llm(msg_in.content)
+    messages = format_history_to_prompt(history, msg_in.content)
+    print(messages)
+    response = await ask_llm(messages)
     assistant_content = response
 
     # ✅ assistant 답변 저장
@@ -102,8 +104,9 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
         raise HTTPException(404, "대화방을 찾을 수 없습니다.")
 
     now = datetime.utcnow()
-
-    # ✅ 사용자 질문 저장
+    # ✅ 과거 대화 히스토리 불러오기
+    history = await load_chat_history(chat_id, limit=10)
+    # ✅ 질문 저장
     chat_messages.insert_one({
         "chat_id": ObjectId(chat_id),
         "user_id": current_user,
@@ -111,12 +114,14 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
         "content": msg_in.content,
         "ts": now
     })
-
-    # ✅ gpt 답변 스트리밍
+    
+    messages = format_history_to_prompt(history, msg_in.content)
+    print(messages)
+    
     async def gpt_response_generator():
         partial_content = ""
 
-        response = await stream_llm(msg_in.content)
+        response = await stream_llm(messages)  # 수정!!
 
         async for chunk in response:
             delta = chunk.choices[0].delta
@@ -125,7 +130,7 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
                 partial_content += token
                 yield token.encode()
 
-        # ✅ assistant 답변 저장
+        # 답변 저장
         chat_messages.insert_one({
             "chat_id": ObjectId(chat_id),
             "user_id": current_user,
@@ -134,7 +139,7 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
             "ts": datetime.utcnow()
         })
 
-        # ✅ [추가!] 대화방 updated_at 갱신
+        # 대화방 업데이트
         chat_sessions.update_one(
             {"_id": ObjectId(chat_id)},
             {"$set": {"updated_at": datetime.utcnow()}}

@@ -1,9 +1,19 @@
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
+from app.db.mongo import chat_messages
+from bson import ObjectId
 
 load_dotenv()
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def format_history_to_prompt(history: list, current_question: str) -> str:
+    dialogue = ""
+    for msg in history:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        dialogue += f"{role}: {msg['content']}\n"
+    dialogue += f"User: {current_question}"
+    return dialogue
 
 # ✅ 일반 호출 (한 번에 전체 답변 받기)
 async def ask_llm(prompt: str) -> str:
@@ -33,3 +43,20 @@ async def stream_llm(prompt: str):
         stream=True
     )
     return response
+
+async def load_chat_history(chat_id: str, limit: int = 10) -> list:
+    """
+    최근 limit개의 (user/assistant) 메시지를 시간순으로 불러와서 LLM messages 포맷으로 변환
+    """
+    messages = list(
+        chat_messages.find({"chat_id": ObjectId(chat_id)})
+        .sort("ts", 1)
+        .limit(limit)
+    )
+    formatted = []
+    for m in messages:
+        formatted.append({
+            "role": m["role"],  # "user" or "assistant"
+            "content": m["content"]
+        })
+    return formatted
