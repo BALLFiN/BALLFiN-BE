@@ -12,3 +12,6 @@ user_collection = db["users"]
 company_collection = db["companies"]
 news_collection = db['news']
 disclosure_collection = db['disclosures']
+
+chat_sessions = db["chat_sessions"]
+chat_messages = db["chat_messages"]

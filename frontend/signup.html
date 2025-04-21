@@ -9,6 +9,7 @@
   <form id="signup-form">
     <input type="email" id="email" placeholder="이메일" required />
     <input type="password" id="password" placeholder="비밀번호" required />
+	<input type="text" id="name" placeholder="이름" required />
     <button type="submit">가입하기</button>
   </form>
   <a href="index.html">이미 계정이 있으신가요? 로그인</a>
@@ -18,13 +19,14 @@
       e.preventDefault();
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
+	  const name = document.getElementById("name").value;
 
       const res = await fetch("http://localhost:8000/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, name })
       });
 
       if (res.ok) {

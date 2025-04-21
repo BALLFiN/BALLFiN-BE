@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+	<meta charset="UTF-8">
+	<title>BarbellAI Chat</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 20px;
+		}
+
+		#chat-rooms {
+			margin-bottom: 20px;
+		}
+
+		#chat-box {
+			border: 1px solid #ccc;
+			padding: 10px;
+			height: 400px;
+			overflow-y: auto;
+			margin-bottom: 10px;
+		}
+
+		#message-input {
+			width: 80%;
+		}
+
+		#send-btn {
+			width: 18%;
+		}
+
+		#current-room-name {
+			margin: 10px 0;
+			font-weight: bold;
+		}
+
+		button {
+			margin: 2px;
+		}
+	</style>
+</head>
+
+<body>
+
+	<h1>BarbellAI 챗봇</h1>
+
+	<!-- ✅ 현재 대화방 이름 표시 -->
+	<h2 id="current-room-name">현재 대화방: 없음</h2>
+
+	<!-- ✅ 스트리밍 모드 토글 -->
+	<label>
+		<input type="checkbox" id="streaming-toggle" checked>
+		스트리밍 모드
+	</label>
+
+	<!-- ✅ 대화방 목록 -->
+	<div id="chat-rooms"></div>
+	<button onclick="newChat()">+ 새 대화방</button>
+
+	<!-- ✅ 채팅창 -->
+	<div id="chat-box"></div>
+
+	<!-- ✅ 메시지 입력창 -->
+	<input id="message-input" type="text" placeholder="메시지 입력..." />
+	<button id="send-btn" type="button" onclick="sendMessage()">보내기</button>
+
+	<script>
+		let currentChatId = null;
+		let currentChatTitle = "";
+		let isSending = false;
+		const token = localStorage.getItem("access_token");
+
+		async function loadChats() {
+			const res = await fetch("http://localhost:8000/chat/chats", {
+				headers: { "Authorization": `Bearer ${token}` }
+			});
+			const chats = await res.json();
+
+			const roomsDiv = document.getElementById("chat-rooms");
+			roomsDiv.innerHTML = "<h3>대화방 목록</h3>";
+
+			chats.forEach(chat => {
+				const container = document.createElement("div");
+
+				const btn = document.createElement("button");
+				btn.innerText = chat.title;
+				btn.dataset.chatId = chat.chat_id;
+				btn.onclick = () => selectChat(chat.chat_id, chat.title);
+				container.appendChild(btn);
+
+				const editBtn = document.createElement("button");
+				editBtn.innerText = "✏️";
+				editBtn.onclick = () => renameChat(chat.chat_id);
+				container.appendChild(editBtn);
+
+				const deleteBtn = document.createElement("button");
+				deleteBtn.innerText = "🗑️";
+				deleteBtn.onclick = () => deleteChat(chat.chat_id);
+				container.appendChild(deleteBtn);
+
+				roomsDiv.appendChild(container);
+			});
+		}
+
+		function newChat() {
+			currentChatId = null;
+			currentChatTitle = "";
+			updateCurrentRoomName();
+			document.getElementById("chat-box").innerHTML = "";
+			localStorage.removeItem("currentChatId");
+			localStorage.removeItem("currentChatTitle");
+		}
+
+		async function selectChat(chatId, title) {
+			currentChatId = chatId;
+			currentChatTitle = title;
+			updateCurrentRoomName();
+			loadMessages();
+			saveChatInfo();
+		}
+
+		function updateCurrentRoomName() {
+			document.getElementById("current-room-name").innerText = currentChatTitle ? `현재 대화방: ${currentChatTitle}` : "현재 대화방: 없음";
+		}
+
+		function saveChatInfo() {
+			localStorage.setItem("currentChatId", currentChatId || "");
+			localStorage.setItem("currentChatTitle", currentChatTitle || "");
+		}
+
+		async function loadMessages() {
+			if (!currentChatId) return;
+
+			const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages`, {
+				headers: { "Authorization": `Bearer ${token}` }
+			});
+			const messages = await res.json();
+
+			const chatBox = document.getElementById("chat-box");
+			chatBox.innerHTML = "";
+
+			messages.forEach(m => appendMessage(m.role, m.content));
+		}
+
+		function appendMessage(role, content) {
+			const chatBox = document.getElementById("chat-box");
+			const div = document.createElement("div");
+			div.innerHTML = `<b>${role}:</b> ${content}`;
+			chatBox.appendChild(div);
+			chatBox.scrollTop = chatBox.scrollHeight;
+		}
+
+		async function sendMessage() {
+			if (isSending) return;
+			isSending = true;
+
+			const input = document.getElementById("message-input");
+			const content = input.value.trim();
+			if (!content) {
+				isSending = false;
+				return;
+			}
+
+			input.value = "";
+			appendMessage("user", content);
+
+			// ✅ 대화방 없으면 생성
+			if (!currentChatId) {
+				const now = new Date();
+				const title = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+
+				const res = await fetch("http://localhost:8000/chat/chats", {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${token}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ title })
+				});
+				const chat = await res.json();
+				currentChatId = chat.chat_id;
+				currentChatTitle = chat.title;
+				updateCurrentRoomName();
+				saveChatInfo();
+				await loadChats();
+			}
+
+			const isStreaming = document.getElementById("streaming-toggle").checked;
+
+			if (isStreaming) {
+				// ✅ 스트리밍 모드
+				const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages/stream`, {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${token}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ content })
+				});
+
+				const reader = res.body.getReader();
+				const decoder = new TextDecoder();
+				let fullAnswer = "";
+
+				const chatBox = document.getElementById("chat-box");
+				const assistantDiv = document.createElement("div");
+				assistantDiv.innerHTML = "<b>assistant:</b> ";
+				chatBox.appendChild(assistantDiv);
+
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					const chunk = decoder.decode(value);
+					fullAnswer += chunk;
+					assistantDiv.innerHTML = `<b>assistant:</b> ${fullAnswer}`;
+					chatBox.scrollTop = chatBox.scrollHeight;
+				}
+			} else {
+				// ✅ 일반 모드
+				const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages`, {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${token}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ content })
+				});
+				const data = await res.json();
+				appendMessage("assistant", data.assistant);
+			}
+
+			isSending = false;
+		}
+
+		document.getElementById("message-input").addEventListener("keydown", function (event) {
+			if (event.key === "Enter" && !event.repeat) {
+				event.preventDefault();
+				sendMessage();
+			}
+		});
+
+		async function renameChat(chatId) {
+			const newTitle = prompt("새 대화방 이름을 입력하세요");
+			if (!newTitle) return;
+
+			await fetch(`http://localhost:8000/chat/chats/${chatId}`, {
+				method: "PUT",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({ title: newTitle })
+			});
+
+			if (chatId === currentChatId) {
+				currentChatTitle = newTitle;
+				updateCurrentRoomName();
+				saveChatInfo();
+			}
+
+			await loadChats();
+		}
+
+		async function deleteChat(chatId) {
+			if (!confirm("정말 삭제하시겠습니까?")) return;
+
+			await fetch(`http://localhost:8000/chat/chats/${chatId}`, {
+				method: "DELETE",
+				headers: { "Authorization": `Bearer ${token}` }
+			});
+
+			if (chatId === currentChatId) {
+				currentChatId = null;
+				currentChatTitle = "";
+				updateCurrentRoomName();
+				saveChatInfo();
+				document.getElementById("chat-box").innerHTML = "";
+			}
+
+			await loadChats();
+		}
+
+		function init() {
+			currentChatId = localStorage.getItem("currentChatId");
+			currentChatTitle = localStorage.getItem("currentChatTitle");
+			if (currentChatId && currentChatTitle) {
+				updateCurrentRoomName();
+				loadMessages();
+			}
+			loadChats();
+		}
+
+		init();
+	</script>
+
+</body>
+
+</html>

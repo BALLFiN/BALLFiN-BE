@@ -8,7 +8,7 @@ import os
 # 환경 변수 또는 기본값
 SECRET_KEY = os.getenv("SECRET_KEY", "my-default-secret-key")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 security = HTTPBearer(auto_error=True)
 
@@ -38,14 +38,11 @@ def decode_access_token(token: str):
 # ✅ FastAPI 의존성으로 사용할 토큰 검증기
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    print(token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_email = payload.get("sub")
         if user_email is None:
-            print("no")
             raise HTTPException(401, "토큰에 사용자 정보 없음")
-        print("pass")
         return user_email
     except JWTError:
         raise HTTPException(401, "유효하지 않거나 만료된 토큰입니다.")
