@@ -40,8 +40,10 @@ async def ask_llm_gemini(prompt: str) -> str:
     """
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
     """
+    print("ask to gemini")
     response = model.start_chat(history=[])  # 대화 히스토리는 현재는 비워둠
     result = response.send_message(prompt)  # ⭐️ 여기 stream=False 기본값
+    print("done")
     return result.text
 
 # ✅ 스트리밍 호출 (조각조각 답변 받기)
