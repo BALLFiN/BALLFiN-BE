@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ✅ 일반 호출 (한 번에 전체 답변 받기)
