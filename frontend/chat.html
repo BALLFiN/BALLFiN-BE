@@ -48,10 +48,19 @@
 	<!-- ✅ 현재 대화방 이름 표시 -->
 	<h2 id="current-room-name">현재 대화방: 없음</h2>
 
-	<!-- ✅ 스트리밍 모드 토글 -->
+	<p>모델을 선택하세요
+		<label>
+			<input type="radio" name="model" value="gpt" checked="checked">
+			GPT
+		</label>
+		<label>
+			<input type="radio" name="model" value="gemini">
+			Gemini
+		</label>
+	</p>
 	<label>
-		<input type="checkbox" id="streaming-toggle" checked>
-		스트리밍 모드
+		<input type="checkbox" id="streaming-toggle" checked="checked">
+		Streaming 사용
 	</label>
 
 	<!-- ✅ 대화방 목록 -->
@@ -187,6 +196,7 @@
 			}
 
 			const isStreaming = document.getElementById("streaming-toggle").checked;
+			const selectedModel = document.querySelector('input[name="model"]:checked').value;
 
 			if (isStreaming) {
 				// ✅ 스트리밍 모드
@@ -196,7 +206,10 @@
 						"Authorization": `Bearer ${token}`,
 						"Content-Type": "application/json"
 					},
-					body: JSON.stringify({ content })
+					body: JSON.stringify({
+						content: content,
+						model: selectedModel 
+					})
 				});
 
 				const reader = res.body.getReader();
@@ -224,7 +237,10 @@
 						"Authorization": `Bearer ${token}`,
 						"Content-Type": "application/json"
 					},
-					body: JSON.stringify({ content })
+					body: JSON.stringify({
+						content: content,
+						model: selectedModel,
+					})
 				});
 				const data = await res.json();
 				appendMessage("assistant", data.assistant);

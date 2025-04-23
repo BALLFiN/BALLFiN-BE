@@ -31,10 +31,10 @@ class ChatSessionOut(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
-
-# ✅ 메시지 추가할 때 (요청)
+    
 class MessageCreate(BaseModel):
-    content: str  # 보낼 메시지 내용
+    content: str
+    model: str  # gpt, gemini 이런거
 
 # ✅ 메시지 조회할 때 (응답)
 class MessageOut(BaseModel):
