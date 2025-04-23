@@ -1,11 +1,24 @@
-from pymongo import MongoClient
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI")
-client = MongoClient(MONGO_URI)
+# local mongo
+#MONGO_URI = os.getenv("LOCAL_MONGO_URI")
+#client = MongoClient(MONGO_URI)
+
+MONGO_URI = os.getenv("ATLAS_MONGO_URI")
+# Create a new client and connect to the server
+client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+# Send a ping to confirm a successful connection
+try:
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(e)
+
 db = client["BarbellAI"]
 
 user_collection = db["users"]
