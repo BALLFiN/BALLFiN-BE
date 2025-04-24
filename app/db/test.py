@@ -15,7 +15,7 @@ class VectorDBApp:
         self.root.geometry("800x600")
         
         self.server_process = None
-        self.server_url = "http://localhost:8000"
+        self.server_url = "http://localhost:9999"
         
         self.setup_ui()
     
@@ -84,7 +84,7 @@ class VectorDBApp:
                 self.stop_btn.config(state=tk.NORMAL)
                 
                 # 서버가 시작될 때까지 기다림
-                self.root.after(3000, self.check_server_status)
+                self.root.after(20000, self.check_server_status)
             except Exception as e:
                 self.result_text.insert(tk.END, f"서버 시작 오류: {str(e)}\n")
                 self.result_text.see(tk.END)

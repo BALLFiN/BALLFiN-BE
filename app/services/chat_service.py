@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from app.db.mongo import chat_messages
 from bson import ObjectId
 import google.generativeai as genai
+from app.models.llm.chat_service import query_news
+import time
 
 load_dotenv()
 
@@ -65,12 +67,36 @@ async def stream_llm_gemini(prompt: str):
     """
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 스트리밍으로 받는다.
     """
-    response = model.start_chat(history=[])
+    # response = model.start_chat(history=[])
 
-    # ✅ streaming=True로 스트림 생성
-    stream = response.send_message(prompt, stream=True)
-
-    return stream
+    # # ✅ streaming=True로 스트림 생성
+    # stream = response.send_message(prompt, stream=True)
+    # 뉴스 데이터베이스 쿼리
+    result = query_news(prompt)
+    
+    response_content = {
+        "model": "gemini-1.5-flash",
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "message": {"role": "assistant", "content": result["response"]},
+        "sources": result.get("sources", []),
+        "done": True
+    }
+    # 스트리밍 객체 생성 (스트리밍 인터페이스 모방)
+    class NewsStream:
+        def __init__(self, content):
+            self.content = content
+            self._done = False
+        
+        def __aiter__(self):
+            return self
+        
+        async def __anext__(self):
+            if self._done:
+                raise StopAsyncIteration
+            
+            self._done = True
+            return self.content
+    return NewsStream(response_content)
 
 async def load_chat_history(chat_id: str, limit: int = 10) -> list:
     """
