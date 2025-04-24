@@ -38,12 +38,17 @@ async def ask_llm_gpt(prompt: str) -> str:
 async def ask_llm_gemini(prompt: str) -> str:
     """
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
+    예외 발생 시 오류 메시지를 반환한다.
     """
     print("ask to gemini")
-    response = model.start_chat(history=[])  # 대화 히스토리는 현재는 비워둠
-    result = response.send_message(prompt)  # ⭐️ 여기 stream=False 기본값
-    print("done")
-    return result.text
+    try:
+        response = model.start_chat(history=[])
+        result = response.send_message(prompt)  # stream=False (기본값)
+        print("done")
+        return result.text
+    except Exception as e:
+        print(f"[ERROR] Gemini 응답 실패: {e}")
+        return f"[오류] Gemini 응답 실패: {str(e)}"
 
 # ✅ 스트리밍 호출 (조각조각 답변 받기)
 async def stream_llm_gpt(prompt: str):
