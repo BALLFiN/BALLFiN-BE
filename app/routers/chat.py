@@ -10,6 +10,7 @@ from datetime import datetime
 from fastapi.responses import StreamingResponse
 from app.services.chat_service import ask_llm_gpt, stream_llm_gpt, ask_llm_gemini, stream_llm_gemini, load_chat_history, format_history_to_prompt
 
+from app.db.neo4j import neo4j_driver
 router = APIRouter()
 
 # ✅ 새 대화방 생성
