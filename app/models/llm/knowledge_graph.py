@@ -1,6 +1,6 @@
 import re
 from typing import Any, Dict, List, Tuple
-from app.db.neo4j import neo4j_driver,client
+from app.db.neo4j import neo4j_driver,client,cached_entities
 
 # 입력 텍스트에서 FinDKG의 entity를 식별하는 함수
 def identify_entities_in_text(text: str, entities: set[str]) -> set[str]:
@@ -181,16 +181,17 @@ def intelligent_graph_expansion(start_entities, news_text, max_hops=3):
     
     return all_relevant_graph
 
-def create_graph_structure(news_text:str, detect_entities:set) -> str:
+def create_graph_structure(query:str) -> str:
     '''
     뉴스 텍스트와 검출할 엔티티 set을 받아 분석에 필요한 지식그래프를 텍스트 형태로 생성
     '''
-    entities_set = identify_entities_in_text(news_text, detect_entities)
+    print("뉴스 분석을 위한 지식 그래프 생성 중...")
+    entities_set = identify_entities_in_text(query, cached_entities)
     if not entities_set:
         return "분석할 기업 엔티티가 없습니다."
     
     # entities_set을 시작으로 그래프 확장
-    relevant_graph = intelligent_graph_expansion(entities_set, news_text)
+    relevant_graph = intelligent_graph_expansion(entities_set, query)
 
     if not relevant_graph:
         return "관련 그래프 정보를 찾을 수 없습니다."
@@ -207,7 +208,7 @@ def create_graph_structure(news_text:str, detect_entities:set) -> str:
 
     return graph_text
 
-def analyze_news_with_graph( news_text: str, cached_entities: set[str]) -> str:
+def analyze_news_with_graph( news_text: str, cached_enteities: set[str]) -> str:
     """
     엔티티 집합과 뉴스 텍스트를 받아 그래프 기반 뉴스 분석 수행
     """

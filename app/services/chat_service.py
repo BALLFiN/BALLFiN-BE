@@ -4,8 +4,10 @@ from dotenv import load_dotenv
 from app.db.mongo import chat_messages
 from bson import ObjectId
 import google.generativeai as genai
-from app.models.llm.chat_service import query_news
-import time
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+from app.models.llm.graph import create_agent
 
 load_dotenv()
 
@@ -15,6 +17,24 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # ✅ Gemini 모델 준비
 model = genai.GenerativeModel("gemini-1.5-flash")  # 일반 텍스트 모델
+
+# langchain 래퍼 모델로 사용해야 랭그래프와 호환 가능함
+gpt = ChatOpenAI(
+    model="gpt-4o-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
+    temperature=0
+    )
+gemini = ChatGoogleGenerativeAI(
+    model = "gemini-1.5-flash",
+    temperature=0,
+    api_key=os.getenv("GOOGLE_API_KEY")
+)
+gpt_agent = create_agent(gpt)
+gemini_agent = create_agent(gemini)
+
+print("✅ gpt, Gemini 에이전트 준비 완료")
+
+
 
 def format_history_to_prompt(history: list, current_question: str) -> str:
     dialogue = ""
@@ -29,25 +49,36 @@ async def ask_llm_gpt(prompt: str) -> str:
     """
     GPT-4o에게 질문(prompt)을 보내고 답변을 받아온다. (스트리밍 ❌)
     """
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "당신은 친절한 AI 어시스턴트입니다."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content # 응답온 response에서 content(답변)만 return
+    print("ask to gpt")
+    try:
+        response = await gpt_agent.ainvoke(
+            {"messages": [
+                {"role": "user",
+                "content": prompt}
+                ]
+                }
+                )
+        return response['messages'][-1].content
+    
+    except Exception as e:
+        print(f"[ERROR] Gpt 응답 실패: {e}")
+        return f"[오류] Gpt 응답 실패: {str(e)}"
 
 async def ask_llm_gemini(prompt: str) -> str:
     """
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
-    예외 발생 시 오류 메시지를 반환한다.
     """
     print("ask to gemini")
     try:
-        result = query_news(prompt)
-        print("done")
-        return result["response"]
+        response = gemini_agent.invoke(
+            {"messages": [
+                {"role": "user",
+                "content": prompt}
+                ]
+                }
+                )
+        return response['messages'][-1].content
+    
     except Exception as e:
         print(f"[ERROR] Gemini 응답 실패: {e}")
         return f"[오류] Gemini 응답 실패: {str(e)}"
