@@ -1,34 +1,33 @@
-from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
 from app.db.mongo import chat_messages
 from bson import ObjectId
-import google.generativeai as genai
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import AIMessage
 
 from app.models.llm.graph import create_agent
 
+
 load_dotenv()
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
-# ✅ Gemini 모델 준비
-model = genai.GenerativeModel("gemini-1.5-flash")  # 일반 텍스트 모델
 
 # langchain 래퍼 모델로 사용해야 랭그래프와 호환 가능함
 gpt = ChatOpenAI(
     model="gpt-4o-mini",
     api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0
+    temperature=0,
+    streaming = True
     )
+
 gemini = ChatGoogleGenerativeAI(
     model = "gemini-1.5-flash",
     temperature=0,
-    api_key=os.getenv("GOOGLE_API_KEY")
+    api_key=os.getenv("GOOGLE_API_KEY"),
+    streaming = True
 )
+
+# 랭그래프 에이전트로 랩핑
 gpt_agent = create_agent(gpt)
 gemini_agent = create_agent(gemini)
 
@@ -54,9 +53,7 @@ async def ask_llm_gpt(prompt: str) -> str:
         response = await gpt_agent.ainvoke(
             {"messages": [
                 {"role": "user",
-                "content": prompt}
-                ]
-                }
+                "content": prompt}]}
                 )
         return response['messages'][-1].content
     
@@ -73,9 +70,7 @@ async def ask_llm_gemini(prompt: str) -> str:
         response = gemini_agent.invoke(
             {"messages": [
                 {"role": "user",
-                "content": prompt}
-                ]
-                }
+                "content": prompt}]}
                 )
         return response['messages'][-1].content
     
@@ -83,31 +78,23 @@ async def ask_llm_gemini(prompt: str) -> str:
         print(f"[ERROR] Gemini 응답 실패: {e}")
         return f"[오류] Gemini 응답 실패: {str(e)}"
 
-# ✅ 스트리밍 호출 (조각조각 답변 받기)
+# ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gpt(prompt: str):
-    """
-    GPT-4o에게 질문(prompt)을 보내고 답변을 스트리밍으로 받는다. (openai>=1.0.0)
-    """
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "당신은 친절한 AI 어시스턴트입니다."},
-            {"role": "user", "content": prompt}
-        ],
-        stream=True
-    )
-    return response
+    async for msg, _ in gpt_agent.astream(            
+        {"messages": [{"role": "user", "content": prompt}]},
+        stream_mode="messages",
+    ):
+        if isinstance(msg, AIMessage) and msg.content:
+            yield msg.content
 
+# ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gemini(prompt: str):
-    """
-    Gemini(Pro)에게 질문(prompt)을 보내고 답변을 스트리밍으로 받는다.
-    """
-    response = model.start_chat(history=[])
-
-    # ✅ streaming=True로 스트림 생성
-    stream = response.send_message(prompt, stream=True)
-
-    return stream
+    async for msg, _ in gemini_agent.astream(
+        {"messages": [{"role": "user", "content": prompt}]},
+        stream_mode="messages",
+    ):
+        if isinstance(msg, AIMessage) and msg.content:
+            yield msg.content
 
 async def load_chat_history(chat_id: str, limit: int = 10) -> list:
     """

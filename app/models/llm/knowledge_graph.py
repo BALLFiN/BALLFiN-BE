@@ -185,10 +185,11 @@ def create_graph_structure(query:str) -> str:
     '''
     뉴스 텍스트와 검출할 엔티티 set을 받아 분석에 필요한 지식그래프를 텍스트 형태로 생성
     '''
-    print("뉴스 분석을 위한 지식 그래프 생성 중...")
+    
     entities_set = identify_entities_in_text(query, cached_entities)
     if not entities_set:
         return "분석할 기업 엔티티가 없습니다."
+    print("🕸️지식그래프 생성 도구 사용, 검출 기업 : ",entities_set)
     
     # entities_set을 시작으로 그래프 확장
     relevant_graph = intelligent_graph_expansion(entities_set, query)

@@ -123,42 +123,28 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
     
     messages = format_history_to_prompt(history, msg_in.content)
     print(messages)
-    async def gpt_response_generator():
-        partial_content = ""
-        if msg_in.model == "gpt":
-            print("streaming", msg_in.model)
-            response = await stream_llm_gpt(messages)
-            async for chunk in response:
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    token = delta.content
-                    partial_content += token
-                    yield token.encode()
-        else:
-            print("streaming", msg_in.model)
-            response = await stream_llm_gemini(messages)
-            for chunk in response:
-                if chunk.text:
-                    token = chunk.text
-                    partial_content += token
-                    yield token.encode()
+    async def response_generator():
+        partial = ""
 
-        # 답변 저장
+        stream_fn = stream_llm_gpt if msg_in.model == "gpt" else stream_llm_gemini
+        async for token in stream_fn(messages):          # ← delta 파싱 필요 X
+            partial += token
+            yield token.encode()                         # SSE 전송
+
+        # 답변 저장 · updated_at 그대로
         chat_messages.insert_one({
             "chat_id": ObjectId(chat_id),
             "user_id": current_user,
             "role": "assistant",
-            "content": partial_content,
-            "ts": datetime.utcnow()
+            "content": partial,
+            "ts": datetime.utcnow(),
         })
-
-        # 대화방 업데이트
         chat_sessions.update_one(
             {"_id": ObjectId(chat_id)},
-            {"$set": {"updated_at": datetime.utcnow()}}
+            {"$set": {"updated_at": datetime.utcnow()}},
         )
 
-    return StreamingResponse(gpt_response_generator(), media_type="text/event-stream")
+    return StreamingResponse(response_generator(), media_type="text/event-stream")
 
 # ✅ 특정 대화방 메시지 조회 (시간순)
 @router.get("/chats/{chat_id}/messages", response_model=List[MessageOut],
