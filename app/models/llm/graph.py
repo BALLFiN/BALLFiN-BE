@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI  
 from langchain.agents import Tool
 from langgraph.prebuilt import create_react_agent
+from typing import Union
 
 vectordb = load_vectordb()
 print("✅ VectorDB 로드 완료")
@@ -42,7 +43,7 @@ def web_search(query: str):
 
 
 def create_agent(
-        llm : ChatOpenAI | ChatGoogleGenerativeAI,
+        llm: Union[ChatOpenAI, ChatGoogleGenerativeAI]
 ):
 
     # Tools
