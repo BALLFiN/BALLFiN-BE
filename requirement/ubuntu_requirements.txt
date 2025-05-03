@@ -1,0 +1,39 @@
+# ✅ FastAPI 서버 구동
+fastapi
+uvicorn[standard]         # Reload, logging 포함
+
+# ✅ 인증 및 보안
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+
+# ✅ MongoDB 및 ObjectId
+pymongo
+bson
+
+# ✅ Neo4j 연결
+neo4j                      # neo4j-driver
+
+# ✅ OpenAI / Gemini LLM 호출
+openai
+google-generativeai
+
+# ✅ LangChain 기반 RAG
+langchain
+langchain-openai
+langchain-google-genai
+langchain-community       # Chroma, Tavily 등 포함
+langchain-core
+langgraph
+
+# ✅ 벡터 검색 + 임베딩
+chromadb
+sentence-transformers
+huggingface-hub           # 모델 다운로드 시 필요
+
+# ✅ 웹검색 도구
+tavily-python             # Tavily Search API
+
+# ✅ 유틸리티
+regex
+tqdm                      # Optional: 로깅/진행 바
