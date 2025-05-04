@@ -5,6 +5,7 @@ uvicorn[standard]         # Reload, logging 포함
 # ✅ 인증 및 보안
 passlib[bcrypt]
 python-jose[cryptography]
+pydantic[email]
 python-dotenv
 
 # ✅ MongoDB 및 ObjectId

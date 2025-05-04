@@ -6,9 +6,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 
 # 환경 변수 또는 기본값
-SECRET_KEY = os.getenv("SECRET_KEY", "my-default-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "kwunivnomercyboys")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 1
 
 security = HTTPBearer(auto_error=True)
 
@@ -39,7 +39,7 @@ def decode_access_token(token: str):
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False} ) # options={"verify_exp": False} false면 토큰만료 검사 X, true면 O
         user_email = payload.get("sub")
         if user_email is None:
             raise HTTPException(401, "토큰에 사용자 정보 없음")
