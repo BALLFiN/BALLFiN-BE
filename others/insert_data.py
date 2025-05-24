@@ -1,61 +1,60 @@
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 import random
+import pandas as pd
+from pymongo import TEXT
 
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient("mongodb+srv://hrpark:Y3LplbJpL8hr3W1y@hrpark.h6uhx.mongodb.net/?retryWrites=true&w=majority&appName=hrpark")
 db = client["BarbellAI"]
 
-company_collection = db["companies"]
-news_collection = db["news"]
-disclosure_collection = db["disclosures"]
+collection = db["news"]
 
-companies = [
-    {"name": "삼성전자", "ticker": "005930"},
-    {"name": "SK하이닉스", "ticker": "000660"},
-    {"name": "삼성바이오로직스", "ticker": "207940"},
-    {"name": "LG에너지솔루션", "ticker": "373220"},
-    {"name": "NAVER", "ticker": "035420"},
-    {"name": "삼성SDI", "ticker": "006400"},
-    {"name": "현대차", "ticker": "005380"},
-    {"name": "기아", "ticker": "000270"},
-    {"name": "POSCO홀딩스", "ticker": "005490"},
-    {"name": "카카오", "ticker": "035720"}
-]
+## 텍스트 인덱스 생성 (제목, 본문 대상)
+# collection.create_index(
+#     [("title", TEXT), ("content", TEXT)],
+#     default_language="none"  # 한국어 설정 (MongoDB는 영어 기반이 기본)
+# )
 
-# 샘플 텍스트 목록
-news_titles = ["신제품 출시", "실적 호조", "글로벌 진출", "AI 기술 도입", "M&A 추진", "노사 협상", "투자 확대", "배당 발표", "주가 상승", "시장 점유율 증가"]
-disclosure_titles = ["주요사항보고서", "자기주식취득", "임원변동", "사업보고서", "감사보고서", "주요계약체결", "자회사변동", "공정공시", "증자결정", "주주총회소집"]
+# # CSV 불러오기
+# df = pd.read_csv("/Users/phr/Downloads/삼성전자.csv")
+# df = df.head(500)
 
-# 회사마다 뉴스/공시 10개씩 넣기
-for company in companies:
-    news_data = []
-    disclosure_data = []
+# # ✅ 필요한 전처리 함수
+# def parse_datetime(korean_time_str):
+#     return datetime.strptime(korean_time_str, "%Y년 %m월 %d일 %H:%M")
 
-    for i in range(10):
-        days_ago = random.randint(1, 100)
-        sample_date = datetime.now() - timedelta(days=days_ago)
+# companies = [
+#     {"name": "삼성전자", "ticker": "005930"},
+#     {"name": "SK하이닉스", "ticker": "000660"},
+#     {"name": "삼성바이오로직스", "ticker": "207940"},
+#     {"name": "LG에너지솔루션", "ticker": "373220"},
+#     {"name": "NAVER", "ticker": "035420"},
+#     {"name": "삼성SDI", "ticker": "006400"},
+#     {"name": "현대차", "ticker": "005380"},
+#     {"name": "기아", "ticker": "000270"},
+#     {"name": "POSCO홀딩스", "ticker": "005490"},
+#     {"name": "카카오", "ticker": "035720"}
+# ]
 
-        # 뉴스
-        news = {
-            "title": f"{company['name']} {random.choice(news_titles)}",
-            "content": f"{company['name']} 관련 뉴스 내용 샘플입니다.",
-            "company": company["name"],
-            "ticker": company["ticker"],
-            "date": sample_date
-        }
-        news_data.append(news)
+# # ✅ 변환 및 삽입
+# documents = []
+# for _, row in df.iterrows():
+#     doc = {
+#         "link": row["link_url"],
+#         "press": row["agency"],
+#         "published_at": parse_datetime(row["date"]),
+#         "title": row["title"],
+#         "image_url": row.get("image_url"),
+#         "related_companies": "005930",
+#         "views": 0,
+#         "summary": "summary 입니다.",
+#         "impact": "positive",  # 'positive' 또는 'negative'
+#         "analysis": "상세분석입니다.",
+#         "content": row['content']
+#     }
+#     documents.append(doc)
+    
+# print(documents[0])
 
-        # 공시
-        disclosure = {
-            "title": f"{company['name']} {random.choice(disclosure_titles)}",
-            "summary": f"{company['name']} 관련 공시 내용 샘플입니다.",
-            "company": company["name"],
-            "ticker": company["ticker"],
-            "date": sample_date
-        }
-        disclosure_data.append(disclosure)
-
-    news_collection.insert_many(news_data)
-    disclosure_collection.insert_many(disclosure_data)
-
-print("뉴스 및 공시 샘플 데이터 삽입 완료 ✅")
+# collection.insert_many(documents)
+# print("✅ 뉴스 데이터 삽입 완료")
