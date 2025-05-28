@@ -20,7 +20,7 @@ router = APIRouter()
     - start_date / end_date: 뉴스의 게시일 범위를 지정 (YYYY-MM-DD 형식).
     - sort_by: relevance (연관도순), newest (최신순), oldest (오래된순), views (조회수순).
     """
-)
+	)
 def search_news(
     keyword: Optional[str] = Query(None, description="검색어"),
     impact: Optional[str] = Query(None, description="'positive' 또는 'negative'"),
@@ -28,7 +28,7 @@ def search_news(
     start_date: Optional[str] = Query(None, description="시작일자 (예: 2025-05-01)"),
     end_date: Optional[str] = Query(None, description="종료일자 (예: 2025-05-31)"),
     limit: int = 50
-):
+	):
     query = {}
 
     # ✅ 텍스트 검색
@@ -106,12 +106,12 @@ def search_news(
 def get_user_news_feed(
     user_email: str = Query(..., description="사용자 이메일"),
     limit: int = 20
-):
+	):
     # ✅ 사용자 즐겨찾기 종목 가져오기
     user = user_collection.find_one({"email": user_email})
     print(user)
     if not user or "favorites" not in user or not user["favorites"]:
-        raise HTTPException(status_code=404, detail="즐겨찾기 종목이 없습니다.")
+        return {"results": [], "total": 0}
 
     favorite_tickers = user["favorites"]
 
