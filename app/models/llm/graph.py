@@ -3,7 +3,7 @@ import os
 
 from app.models.llm.DB_loader import load_vectordb
 from langchain_community.tools.tavily_search import TavilySearchResults
-from app.models.llm.knowledge_graph import create_graph_structure
+# from app.models.llm.knowledge_graph import create_graph_structure
 
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
@@ -51,15 +51,15 @@ def create_agent(
         Tool(
             name = "web_search",
             func = web_search,
-            description="실시간 웹 검색을 수행합니다."),
-        Tool(
-            name = "news_retrieve",
-            func = news_retrieve,
-            description="기업 뉴스 DB에서 주요 뉴스를 찾습니다"),
-        Tool(
-            name = "create_graph_structure",
-            func = create_graph_structure,
-            description="기업/뉴스 분석에 필요한 배경 지식그래프를 만듭니다"),
+             description="실시간 웹 검색을 수행합니다."),
+        # Tool(
+        #     name = "news_retrieve",
+        #     func = news_retrieve,
+        #     description="기업 뉴스 DB에서 주요 뉴스를 찾습니다"),
+        # Tool(
+        #     name = "create_graph_structure",
+        #     func = create_graph_structure,
+        #     description="기업/뉴스 분석에 필요한 배경 지식그래프를 만듭니다"),
     ]
 
     # Agent
