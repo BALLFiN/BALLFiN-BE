@@ -22,7 +22,7 @@ except Exception as e:
 db = client["BarbellAI"]
 
 user_collection = db["users"]
-company_collection = db["companies"]
+company_collection = db["company"]
 news_collection = db['news']
 disclosure_collection = db['disclosures']
 

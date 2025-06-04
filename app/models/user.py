@@ -17,4 +17,4 @@ class UserInDB(BaseModel):
     favorites: Optional[List[str]] = []
 
 class FavoriteRequest(BaseModel):
-    ticker: str  # 예: "005930"
+    ticker_or_company: str

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Query, HTTPException, Path
 from pymongo import DESCENDING, ASCENDING, ReturnDocument
 from typing import List, Optional
 from app.db.mongo import news_collection, user_collection  # 몽고 연결
+from app.core.security import get_current_user
+from fastapi import Depends
 from datetime import datetime
 import math
 from datetime import timedelta
@@ -13,22 +15,25 @@ router = APIRouter()
     "/search",
     summary="뉴스 검색",
     description="""
-    검색어, 긍/부정 필터, 날짜 범위, 정렬 옵션 등을 조합하여 뉴스 목록을 검색합니다.
+    검색어, 긍/부정/중립 필터, 날짜 범위, 정렬 옵션 등을 조합하여 뉴스 목록을 검색합니다.
 
     - keyword: 제목 또는 내용에서 검색어를 포함한 뉴스 검색 (MongoDB 텍스트 인덱스 기반).
-    - impact: 뉴스의 긍/부정 라벨을 기준으로 필터링 ('positive' 또는 'negative').
+    - impact: 뉴스의 긍/부정/중립 라벨을 기준으로 필터링 ('positive' | 'negative' | 'neutral').
     - start_date / end_date: 뉴스의 게시일 범위를 지정 (YYYY-MM-DD 형식).
     - sort_by: relevance (연관도순), newest (최신순), oldest (오래된순), views (조회수순).
+    - page: 몇 번째 페이지인지 (1부터 시작).
+    - limit: 한 페이지당 결과 수.
     """
-	)
+)
 def search_news(
     keyword: Optional[str] = Query(None, description="검색어"),
-    impact: Optional[str] = Query(None, description="'positive' 또는 'negative'"),
+    impact: Optional[str] = Query(None, description="'positive' | 'negative' | 'neutral'"),
     sort_by: Optional[str] = Query(None, description="정렬: relevance | newest | oldest | views"),
     start_date: Optional[str] = Query(None, description="시작일자 (예: 2025-05-01)"),
     end_date: Optional[str] = Query(None, description="종료일자 (예: 2025-05-31)"),
-    limit: int = 50
-	):
+    page: int = Query(1, description="페이지 번호 (1부터 시작)", ge=1),
+    limit: int = Query(10, description="한 페이지당 결과 수", ge=1, le=100)
+):
     query = {}
 
     # ✅ 텍스트 검색
@@ -37,8 +42,8 @@ def search_news(
         query["$text"] = {"$search": keyword}
         projection["score"] = {"$meta": "textScore"}
 
-    # ✅ 긍/부정 필터링
-    if impact in ["positive", "negative"]:
+    # ✅ 긍/부정/중립 필터링
+    if impact in ["positive", "negative", "neutral"]:
         query["impact"] = impact
 
     # ✅ 기간 필터링
@@ -53,7 +58,7 @@ def search_news(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"날짜 형식 오류: {str(e)}")
 
-    # ✅ 정렬 우선순위: keyword 유무에 따라
+    # ✅ 정렬 우선순위
     if sort_by == "oldest":
         sort_option = [("published_at", ASCENDING)]
     elif sort_by == "views":
@@ -65,8 +70,11 @@ def search_news(
     else:
         sort_option = [("published_at", DESCENDING)]  # 기본값
 
-    # ✅ 검색 수행
-    cursor = news_collection.find(query, projection).sort(sort_option).limit(limit)
+    # ✅ page → offset 계산
+    offset = (page - 1) * limit
+
+    # ✅ 검색 수행 + 페이지네이션 적용
+    cursor = news_collection.find(query, projection).sort(sort_option).skip(offset).limit(limit)
 
     results = []
     for doc in cursor:
@@ -84,13 +92,23 @@ def search_news(
             "views": doc.get("views", 0),
         }
 
-        # score 있을 경우 포함
         if "score" in doc:
             result["score"] = round(doc["score"], 3)
 
         results.append(result)
 
-    return {"results": results, "total": len(results)}
+    # # ✅ 총 개수도 같이 반환
+    # total = news_collection.count_documents(query)
+	# ✅ 실제 응답에 담긴 range 계산
+    start_idx = offset + 1 if results else 0
+    end_idx = offset + len(results)
+    return {
+        "results": results,
+        "page": page,
+        "offset": offset,
+        "range": f"{start_idx}-{end_idx}",
+        "limit": limit
+    }
 
 @router.get(
     "/my-feed",
@@ -102,14 +120,13 @@ def search_news(
     - 해당 종목이 `related_companies`에 포함된 뉴스만 조회합니다.
     - 최신순으로 정렬됩니다.
     """
-    )
+)
 def get_user_news_feed(
-    user_email: str = Query(..., description="사용자 이메일"),
+    current_user: str = Depends(get_current_user),
     limit: int = 20
-	):
+):
     # ✅ 사용자 즐겨찾기 종목 가져오기
-    user = user_collection.find_one({"email": user_email})
-    print(user)
+    user = user_collection.find_one({"email": current_user})
     if not user or "favorites" not in user or not user["favorites"]:
         return {"results": [], "total": 0}
 
