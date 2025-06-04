@@ -3,4 +3,5 @@
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
+*.pydchroma.sqlite3
+chroma.sqlite3
