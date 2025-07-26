@@ -48,7 +48,7 @@ def get_yahoo_data(symbol: str):
     
 def get_interest_rate():
     """한국은행 기준금리 조회"""
-    api_key = os.getenv("BOK_API_KEY", "M2LOD7ISVP6UWIE1JK1E")
+    api_key = os.getenv("BOK_API_KEY")
     today = datetime.now().strftime("%Y%m%d")
     
     # 최근 30일 데이터 조회

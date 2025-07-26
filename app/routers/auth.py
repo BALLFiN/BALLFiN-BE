@@ -33,7 +33,7 @@ def login(user: UserLogin):
     db_user = user_collection.find_one({"email": user.email})
     if not db_user or not verify_password(user.password, db_user["password"]):
         raise HTTPException(401, "이메일 또는 비밀번호 오류")
-
+    print(db_user)
     # ✅ 로그인 성공했으면 마지막 로그인 시간 업데이트
     user_collection.update_one(
         {"email": user.email},
@@ -41,7 +41,18 @@ def login(user: UserLogin):
     )
 
     token = create_access_token({"sub": user.email})
-    return {"access_token": token}
+    return {
+        "message": "어서오세요!",
+        "access_token": token,  # 토큰은 꼭 포함해서 보내줘야 합니다.
+        "user": {
+            "_id": str(db_user['_id']),  # ObjectId를 문자열로 변환
+            "email": db_user['email'],
+            "name": db_user['name'],
+            "favorites": db_user['favorites'],
+            "created_at": db_user['created_at'].isoformat(),  # datetime을 문자열로 변환
+            "last_login_at": db_user['last_login_at'].isoformat() # datetime을 문자열로 변환
+        }
+    }
 
 @router.get("/check")
 def main(current_user: str = Depends(get_current_user)):
