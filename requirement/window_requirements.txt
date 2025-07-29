@@ -203,3 +203,9 @@ xxhash==3.5.0
 yarl==1.19.0
 zipp==3.21.0
 zstandard==0.23.0
+
+langchain-chroma==0.2.5
+langchain-huggingface==0.3.1
+langchain-naver==0.1.0
+langchain-tavily==0.2.11
+yfinance==0.2.65
