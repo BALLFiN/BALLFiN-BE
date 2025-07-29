@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from bson import ObjectId
 from datetime import datetime
 from fastapi.responses import StreamingResponse
-from app.services.chat_service import ask_llm_gpt, stream_llm_gpt, ask_llm_gemini, stream_llm_gemini, load_chat_history, format_history_to_prompt
+from app.services.chat_service import ask_llm_gpt, stream_llm_gpt, ask_llm_clova, stream_llm_clova, load_chat_history, format_history_to_prompt
 
 #from app.db.neo4j import neo4j_driver
 router = APIRouter()
@@ -81,7 +81,7 @@ async def send_message(chat_id: str, msg_in: MessageCreate, current_user: str = 
         response = await ask_llm_gpt(messages)
     else:
         print("not streaming", msg_in.model)
-        response = await ask_llm_gemini(messages)
+        response = await ask_llm_clova(messages)
     assistant_content = response
 
     # ✅ assistant 답변 저장
@@ -126,7 +126,7 @@ async def stream_message(chat_id: str, msg_in: MessageCreate, current_user: str 
     async def response_generator():
         partial = ""
 
-        stream_fn = stream_llm_gpt if msg_in.model == "gpt" else stream_llm_gemini
+        stream_fn = stream_llm_gpt if msg_in.model == "gpt" else stream_llm_clova
         async for token in stream_fn(messages):          # ← delta 파싱 필요 X
             partial += token
             yield token.encode()                         # SSE 전송

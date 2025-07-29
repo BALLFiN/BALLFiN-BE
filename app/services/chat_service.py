@@ -2,10 +2,9 @@ import os
 from dotenv import load_dotenv
 from app.db.mongo import chat_messages
 from bson import ObjectId
-from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
-
+from langchain_naver import ChatClovaX
+from langchain_openai import ChatOpenAI
 from app.models.llm.graph import create_agent
 
 
@@ -16,22 +15,22 @@ load_dotenv()
 gpt = ChatOpenAI(
     model="gpt-4o-mini",
     api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0,
+    temperature=0.5,
     streaming = True
     )
 
-gemini = ChatGoogleGenerativeAI(
-    model = "gemini-1.5-flash",
-    temperature=0,
-    api_key=os.getenv("GOOGLE_API_KEY"),
-    streaming = True
+clova = ChatClovaX(
+    model="HCX-DASH-002",
+    max_tokens=1024, # Tool 사용시 max_tokens은 1024이상 필수
+    temperature=0.5,
+    streaming=True,
+    api_key=os.getenv("CLOVASTUDIO_API_KEY")
 )
 
 # 랭그래프 에이전트로 랩핑
 gpt_agent = create_agent(gpt)
-gemini_agent = create_agent(gemini)
-
-print("✅ gpt, Gemini 에이전트 준비 완료")
+clova_agent = create_agent(clova)
+print("✅ gpt, clova 에이전트 준비 완료")
 
 
 
@@ -61,13 +60,15 @@ async def ask_llm_gpt(prompt: str) -> str:
         print(f"[ERROR] Gpt 응답 실패: {e}")
         return f"[오류] Gpt 응답 실패: {str(e)}"
 
-async def ask_llm_gemini(prompt: str) -> str:
+
+    
+async def ask_llm_clova(prompt: str) -> str:
     """
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
     """
-    print("ask to gemini")
+    print("ask to clova")
     try:
-        response = gemini_agent.invoke(
+        response = clova_agent.invoke(
             {"messages": [
                 {"role": "user",
                 "content": prompt}]}
@@ -75,8 +76,8 @@ async def ask_llm_gemini(prompt: str) -> str:
         return response['messages'][-1].content
     
     except Exception as e:
-        print(f"[ERROR] Gemini 응답 실패: {e}")
-        return f"[오류] Gemini 응답 실패: {str(e)}"
+        print(f"[ERROR] clova 응답 실패: {e}")
+        return f"[오류] clova 응답 실패: {str(e)}"
 
 # ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gpt(prompt: str):
@@ -88,13 +89,15 @@ async def stream_llm_gpt(prompt: str):
             yield msg.content
 
 # ✅ LangGraph 토큰 스트리밍 
-async def stream_llm_gemini(prompt: str):
-    async for msg, _ in gemini_agent.astream(
+async def stream_llm_clova(prompt: str):
+    async for msg, _ in clova_agent.astream(            
         {"messages": [{"role": "user", "content": prompt}]},
         stream_mode="messages",
     ):
         if isinstance(msg, AIMessage) and msg.content:
             yield msg.content
+
+
 
 async def load_chat_history(chat_id: str, limit: int = 10) -> list:
     """

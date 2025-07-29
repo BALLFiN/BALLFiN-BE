@@ -1,5 +1,5 @@
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 from app.models.llm.config import VECTORDB_PATH, EMBEDDING_MODEL
 
 # 데이터베이스 로딩 함수
