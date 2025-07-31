@@ -56,7 +56,7 @@ def create_agent(
             description="금융·경제 관련 최신 정보를 실시간으로 검색할 때 사용합니다."
         ),
         Tool(
-        name="Similar News Search",
+        name="Similar_News_Search",
         func=rag_search,
         description=(
             "주어진 쿼리와 관련된 과거 금융·경제 뉴스 문서를 벡터 DB에서 검색합니다. "
