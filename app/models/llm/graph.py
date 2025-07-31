@@ -1,10 +1,6 @@
 from typing import List, Union
 import os
 from datetime import datetime, timezone, timedelta
-
-from pyparsing import C
-
-from app.models.llm.DB_loader import load_vectordb
 from langchain_tavily import TavilySearch
 # from app.models.llm.knowledge_graph import create_graph_structure
 
@@ -13,10 +9,9 @@ from langchain_openai import ChatOpenAI
 from langchain_naver import ChatClovaX
 from langchain.agents import Tool
 from langgraph.prebuilt import create_react_agent
+from app.db.vectorDB import vectordb
 
-# vectordb = load_vectordb()
-# print("✅ VectorDB 로드 완료")
-# retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 10})
+
 
 # Tavily 웹 검색 도구 초기화
 tavily_tool = TavilySearch(
@@ -26,15 +21,16 @@ tavily_tool = TavilySearch(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-# 문서 검색 도구
-# def news_retrieve(query) -> List[Document]:
-#     print("✅ 뉴스 문서 검색 도구 사용")
-#     try:
-#         docs = retriever.invoke(query)
-#         return docs
-#     except Exception as e:
-#         print("❌ 문서 검색 중 오류:", e)
-#         return []
+# 2. 질의용 RAG 함수
+def rag_search(query: str, k: int = 3) -> str:
+    print("🔍 RAG 검색 도구 사용:", query)
+    hits = vectordb.similarity_search(query, k=k)
+    # 텍스트 + 메타를 합쳐 한 스트링으로 반환
+    return "\n\n".join(
+        f"{h.metadata['date']} | {h.metadata['title']}\n→ {h.page_content}…"
+        for h in hits
+    )
+
 
 # 웹 검색 도구 랩핑
 def web_search(query: str):
@@ -57,13 +53,15 @@ def create_agent(
         Tool(
             name="web_search",
             func=web_search,
-            description="금융·경제 관련 최신 정보를 실시간으로 검색할 때 사용합니다. 뉴스, 주가, 환율, 시장 동향 등을 포함합니다."
+            description="금융·경제 관련 최신 정보를 실시간으로 검색할 때 사용합니다."
         ),
-        # Tool(
-        #     name="news_retrieve",
-        #     func=news_retrieve,
-        #     description="기업 관련 주요 뉴스를 데이터베이스에서 검색하여 제공할 때 사용합니다."
-        # ),
+        Tool(
+        name="Similar News Search",
+        func=rag_search,
+        description=(
+            "주어진 쿼리와 관련된 과거 금융·경제 뉴스 문서를 벡터 DB에서 검색합니다. "
+        ) 
+        )
         # Tool(
         #     name="create_graph_structure",
         #     func=create_graph_structure,

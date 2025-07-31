@@ -1,113 +1,99 @@
-# vectordb.py
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from pathlib import Path
+from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import pandas as pd
 
-class VectorDBManager:
-    def __init__(self, persist_directory="./chroma_db"):
-        """
-        벡터 데이터베이스 관리자 초기화
-        
-        Args:
-            persist_directory (str): 벡터 데이터베이스 저장 경로
-        """
-        self.directory = persist_directory
-        # HuggingFace 임베딩 모델 사용
-        self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    
-    def create_or_update_db(self, documents):
-        """
-        문서로부터 벡터 데이터베이스 생성 또는 업데이트
-        
-        Args:
-            documents (list): Document 객체 리스트
-            
-        Returns:
-            Chroma: 벡터 데이터베이스 객체
-        """
-        try:
-            # 기존 DB 로드 시도
-            existing_db = Chroma(
-                embedding_function=self.embeddings,
-                persist_directory=self.directory
-            )
-            # 기존 DB에 문서 추가
-            existing_db.add_documents(documents)
-            existing_db.persist()
-            print(f"Updated existing database with {len(documents)} documents")
-            return existing_db
-        except Exception as e:
-            print(f"Creating new database: {e}")
-            # DB가 없으면 새로 생성
-            db = Chroma.from_documents(
-                documents=documents,
-                embedding=self.embeddings,
-                persist_directory=self.directory
-            )
-            db.persist()
-            print(f"Created new database with {len(documents)} documents")
-            return db
-    
-    def load_db(self):
-        """
-        기존 벡터 데이터베이스 로드
-        
-        Returns:
-            Chroma: 벡터 데이터베이스 객체 또는 None (실패 시)
-        """
-        try:
-            db = Chroma(
-                embedding_function=self.embeddings,
-                persist_directory=self.directory
-            )
-            print(f"Successfully loaded database from {self.directory}")
-            return db
-        except Exception as e:
-            print(f"Error loading database: {e}")
-            return None
-            
-    def get_retriever(self, search_type="similarity", k=3):
-        """
-        검색을 위한 리트리버 객체 반환
-        
-        Args:
-            search_type (str): 검색 타입 (similarity, mmr 등)
-            k (int): 반환할 최대 문서 수
-            
-        Returns:
-            Retriever: 리트리버 객체 또는 None (실패 시)
-        """
-        db = self.load_db()
-        if db:
-            return db.as_retriever(search_type=search_type, search_kwargs={"k": k})
+# 0. 상수 정의
+CSV_DIR = Path("app/db/vectorDB_docs/news_vec")
+INDEX_DIR = "chroma_db"
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def init_vectordb():
+    """
+    벡터 DB를 로드하거나 새로 생성합니다.
+    오류 발생 시 None을 반환합니다.
+    """
+    print("🔄 벡터 DB 초기화 중...")
+    try:
+        embedder = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        db = Chroma(
+            persist_directory=INDEX_DIR,
+            embedding_function=embedder
+        )
+        print("✅ 벡터 DB 로드 완료")
+        return db
+    except Exception as e:
+        print(f"❌ 벡터 DB 로드 실패: {e}")
         return None
 
-# 직접 실행 시 테스트 코드
-if __name__ == "__main__":
-    from langchain_core.documents import Document
-    
-    # 테스트용 문서 생성
-    test_docs = [
-        Document(
-            page_content="테스트 문서 1의 내용입니다.", 
-            metadata={"title": "테스트 문서 1", "source": "test"}
-        ),
-        Document(
-            page_content="테스트 문서 2의 내용입니다.", 
-            metadata={"title": "테스트 문서 2", "source": "test"}
-        )
-    ]
-    
-    # 테스트 DB 저장 경로
-    test_db_path = "./test_chroma_db"
-    
-    # 벡터 DB 관리자 초기화 및 테스트
-    db_manager = VectorDBManager(persist_directory=test_db_path)
-    db_manager.create_or_update_db(test_docs)
-    
-    # 리트리버 테스트
-    retriever = db_manager.get_retriever(k=1)
-    if retriever:
-        result = retriever.invoke("테스트")
-        print("검색 결과:")
-        for doc in result:
-            print(f"- {doc.page_content}")
+# 전역 벡터 DB 초기화
+vectordb = init_vectordb()
+
+if vectordb is None:
+    # vectordb가 없으면 이후 작업이 무의미하므로 종료
+    raise SystemExit("벡터 DB 초기화에 실패하여 프로그램을 종료합니다.")
+
+
+def build_rag_index():
+    # 0) CSV 디렉터리 확인
+    if not CSV_DIR.exists() or not CSV_DIR.is_dir():
+        print(f"❌ CSV 디렉터리를 찾을 수 없습니다: {CSV_DIR}")
+        return
+
+    # 1) 폴더 내 모든 CSV 파일 수집
+    csv_files = list(CSV_DIR.glob("*.csv"))
+    if not csv_files:
+        print(f"⚠️ '{CSV_DIR}' 안에 .csv 파일이 없습니다.")
+        return
+
+    all_docs = []
+    for csv_file in csv_files:
+        try:
+            df = pd.read_csv(csv_file)
+        except Exception as e:
+            print(f"⚠️ 파일 로드 실패 ({csv_file.name}): {e}")
+            continue
+
+        # content 컬럼 결측 제거, metadata에 파일명 추가
+        df = df.dropna(subset=["content"])
+        docs = [
+            Document(
+                page_content=row["content"],
+                metadata={
+                    "title": row.get("title", ""),
+                    "date": row.get("date", ""),
+                    "source": csv_file.name
+                }
+            )
+            for _, row in df.iterrows()
+        ]
+        if docs:
+            print(f"Loaded {csv_file.name}: {len(docs)} docs")
+            all_docs.extend(docs)
+
+    if not all_docs:
+        print("⚠️ 처리할 문서가 하나도 없습니다.")
+        return
+
+    # 2) 전체 문서를 한 번에 청크 분할
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    chunked = splitter.split_documents(all_docs)
+    if not chunked:
+        print("⚠️ 분할된 청크가 없습니다. CSV 내용을 확인하세요.")
+        return
+
+    # 3) 인덱스에 추가
+    vectordb.add_documents(chunked)
+    print(f"✅ RAG 인덱스 생성 완료: {len(chunked)} 청크 저장됨")
+
+# ————————————————————————
+# 스크립트 첫 실행 시 인덱스 없으면 생성
+if vectordb._collection.count() == 0:
+    print(f"❗️ 인덱스 폴더 '{INDEX_DIR}'가 비어 있습니다. 새로 생성합니다.")
+    build_rag_index()
+else:
+    # 이미 존재하면 로드만 하면 됩니다 (Chroma 래퍼가 자동으로 로드)
+    print(f"✅ 인덱스 폴더 '{INDEX_DIR}'를 로드했습니다.")
