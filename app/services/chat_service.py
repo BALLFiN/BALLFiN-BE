@@ -5,7 +5,7 @@ from bson import ObjectId
 from langchain_core.messages import AIMessage
 from langchain_naver import ChatClovaX
 from langchain_openai import ChatOpenAI
-from app.models.llm.graph import create_agent
+from app.models.llm.graph import create_agent,current_kst
 
 
 load_dotenv()
@@ -42,17 +42,22 @@ def format_history_to_prompt(history: list, current_question: str) -> str:
     dialogue += f"User: {current_question}"
     return dialogue
 
+
+def prepend_time(p: str) -> str:
+    return f"현재 시각은 {current_kst()} KST입니다. 이 시간 기준으로 답변해 주세요.\n{p}"
+
 # ✅ 일반 호출 (한 번에 전체 답변 받기)
 async def ask_llm_gpt(prompt: str) -> str:
     """
     GPT-4o에게 질문(prompt)을 보내고 답변을 받아온다. (스트리밍 ❌)
     """
     print("ask to gpt")
+    time_prompt = prepend_time(prompt)
     try:
         response = await gpt_agent.ainvoke(
             {"messages": [
                 {"role": "user",
-                "content": prompt}]}
+                "content": time_prompt}]}
                 )
         return response['messages'][-1].content
     
@@ -67,11 +72,12 @@ async def ask_llm_clova(prompt: str) -> str:
     Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
     """
     print("ask to clova")
+    time_prompt = prepend_time(prompt)
     try:
         response = clova_agent.invoke(
             {"messages": [
                 {"role": "user",
-                "content": prompt}]}
+                "content": time_prompt}]}
                 )
         return response['messages'][-1].content
     
@@ -81,8 +87,9 @@ async def ask_llm_clova(prompt: str) -> str:
 
 # ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gpt(prompt: str):
+    time_prompt = prepend_time(prompt)
     async for msg, _ in gpt_agent.astream(            
-        {"messages": [{"role": "user", "content": prompt}]},
+        {"messages": [{"role": "user", "content": time_prompt}]},
         stream_mode="messages",
     ):
         if isinstance(msg, AIMessage) and msg.content:
@@ -90,8 +97,9 @@ async def stream_llm_gpt(prompt: str):
 
 # ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_clova(prompt: str):
+    time_prompt = prepend_time(prompt)
     async for msg, _ in clova_agent.astream(            
-        {"messages": [{"role": "user", "content": prompt}]},
+        {"messages": [{"role": "user", "content": time_prompt}]},
         stream_mode="messages",
     ):
         if isinstance(msg, AIMessage) and msg.content:
