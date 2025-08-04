@@ -36,13 +36,27 @@ def decode_access_token(token: str):
         return None
 
 # ✅ FastAPI 의존성으로 사용할 토큰 검증기
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False} ) # options={"verify_exp": False} false면 토큰만료 검사 X, true면 O
-        user_email = payload.get("sub")
-        if user_email is None:
-            raise HTTPException(401, "토큰에 사용자 정보 없음")
-        return user_email
-    except JWTError:
-        raise HTTPException(401, "유효하지 않거나 만료된 토큰입니다.")
+# def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+#     token = credentials.credentials
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False} ) # options={"verify_exp": False} false면 토큰만료 검사 X, true면 O
+#         user_email = payload.get("sub")
+#         if user_email is None:
+#             raise HTTPException(401, "토큰에 사용자 정보 없음")
+#         return user_email
+#     except JWTError:
+#         raise HTTPException(401, "유효하지 않거나 만료된 토큰입니다.")
+
+
+# 미래에셋용 토큰 인증 제거한 버전
+def get_current_user():
+    # token = credentials.credentials
+    # try:
+    #     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False} ) # options={"verify_exp": False} false면 토큰만료 검사 X, true면 O
+    #     user_email = payload.get("sub")
+    #     if user_email is None:
+    #         raise HTTPException(401, "토큰에 사용자 정보 없음")
+    #     return user_email
+    # except JWTError:
+    #     raise HTTPException(401, "유효하지 않거나 만료된 토큰입니다.")
+    return "parkhr0505@naver.com"

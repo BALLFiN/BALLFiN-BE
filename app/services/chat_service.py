@@ -36,7 +36,7 @@ print("✅ gpt, Gemini 에이전트 준비 완료")
 
 
 def format_history_to_prompt(history: list, current_question: str) -> str:
-    dialogue = ""
+    dialogue = "답변시 오늘 날짜를 말하지는 말아줘."
     for msg in history:
         role = "User" if msg["role"] == "user" else "Assistant"
         dialogue += f"{role}: {msg['content']}\n"
