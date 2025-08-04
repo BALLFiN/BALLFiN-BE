@@ -89,6 +89,7 @@ def search_news(
             "press": doc["press"],
             "impact": doc["impact"],
             "image_url": image_url,
+            "impact_score": doc.get("impact_score", 5),
             "views": doc.get("views", 0),
         }
 
