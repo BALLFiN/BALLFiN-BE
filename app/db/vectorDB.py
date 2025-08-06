@@ -5,9 +5,11 @@ from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import pandas as pd
 
-# 0. 상수 정의
-CSV_DIR = Path("app/db/vectorDB_docs/news_vec")
-INDEX_DIR = "chroma_db"
+
+BASE_DIR = Path(__file__).parent.parent.parent.resolve()  # main.py에서 프로젝트 루트로
+print(f"프로젝트 루트 디렉터리: {BASE_DIR}")
+CSV_DIR = BASE_DIR / "app/db/vectorDB_docs/news_vec"
+INDEX_DIR = str(BASE_DIR / "chroma_db")
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
