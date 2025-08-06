@@ -8,7 +8,7 @@ import pandas as pd
 
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()  # main.py에서 프로젝트 루트로
 print(f"프로젝트 루트 디렉터리: {BASE_DIR}")
-CSV_DIR = BASE_DIR / "app/db/vectorDB_docs/news_vec"
+CSV_DIR = BASE_DIR / "app/db/vectorDB_Docs/news_vec"
 INDEX_DIR = str(BASE_DIR / "chroma_db")
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -24,7 +24,7 @@ def init_vectordb():
         db = Chroma(
             persist_directory=INDEX_DIR,
             embedding_function=embedder
-        )
+        ) 
         print("✅ 벡터 DB 로드 완료")
         return db
     except Exception as e:
@@ -32,7 +32,7 @@ def init_vectordb():
         return None
 
 # 전역 벡터 DB 초기화
-vectordb = init_vectordb()
+vectordb = init_vectordb() 
 
 if vectordb is None:
     # vectordb가 없으면 이후 작업이 무의미하므로 종료
@@ -92,6 +92,7 @@ def build_rag_index():
     print(f"✅ RAG 인덱스 생성 완료: {len(chunked)} 청크 저장됨")
 
 # ————————————————————————
+
 # 스크립트 첫 실행 시 인덱스 없으면 생성
 if vectordb._collection.count() == 0:
     print(f"❗️ 인덱스 폴더 '{INDEX_DIR}'가 비어 있습니다. 새로 생성합니다.")
