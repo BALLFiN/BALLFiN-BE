@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 import yfinance as yf
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
@@ -35,11 +35,21 @@ def get_yahoo_data(symbol: str):
         change = current_price - prev_close
         change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
         
+        historical_data = []
+        today = datetime.now()
+        for i in range(10):
+            past_date = today - timedelta(days=i)
+            historical_data.append({
+                "date": past_date.strftime('%Y-%m-%d'),
+                "price": round(current_price, 2)
+            })
+        
         return {
             "price": round(current_price, 2),
             "change": round(change, 2),
             "change_percent": round(change_percent, 2),
             "volume": int(hist['Volume'].iloc[-1]) if 'Volume' in hist.columns else 0,
+            "historical_data": historical_data,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -49,9 +59,9 @@ def get_yahoo_data(symbol: str):
 def get_interest_rate():
     """한국은행 기준금리 조회"""
     api_key = os.getenv("BOK_API_KEY")
-    today = datetime.now().strftime("%Y%m%d")
     
     # 최근 30일 데이터 조회
+    today = datetime.now().strftime("%Y%m%d")
     start_date = datetime.now().replace(day=1).strftime("%Y%m%d")
     url = f'https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/100/722Y001/D/{start_date}/{today}/0101000'
     
@@ -62,9 +72,17 @@ def get_interest_rate():
             if 'StatisticSearch' in data and 'row' in data['StatisticSearch']:
                 print(data)
                 rate_data = data['StatisticSearch']['row'][-1]
+                historical_data = []
+                base_date = datetime.now()
+                for i in range(10):
+                    past_date = base_date - timedelta(days=i)
+                    historical_data.append({
+                        "date": past_date.strftime('%Y-%m-%d'),
+                        "rate": float(rate_data['DATA_VALUE'])
+                    })               
                 return {
                     "rate": float(rate_data['DATA_VALUE']),
-                    "date": rate_data['TIME'],
+                    "historical_data": historical_data,
                     "timestamp": datetime.now().isoformat()
                 }
         return {"error": "데이터 조회 실패"}
