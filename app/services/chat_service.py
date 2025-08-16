@@ -54,7 +54,7 @@ async def ask_llm_gpt(prompt: str) -> str:
     print("ask to gpt")
     time_prompt = prepend_time(prompt)
     try:
-        response = await gpt_agent.ainvoke(
+        response = gpt_agent.invoke(
             {"messages": [
                 {"role": "user",
                 "content": time_prompt}]}

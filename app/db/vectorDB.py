@@ -2,15 +2,16 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from pathlib import Path
 from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import pandas as pd
+import re
 
 
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()  # main.py에서 프로젝트 루트로
 print(f"프로젝트 루트 디렉터리: {BASE_DIR}")
 CSV_DIR = BASE_DIR / "app/db/vectorDB_Docs/news_vec"
 INDEX_DIR = str(BASE_DIR / "chroma_db")
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBED_MODEL = "exp-models/dragonkue-KoEn-E5-Tiny"
 
 
 def init_vectordb():
@@ -19,8 +20,11 @@ def init_vectordb():
     오류 발생 시 None을 반환합니다.
     """
     print("🔄 벡터 DB 초기화 중...")
-    try:
-        embedder = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+    try:  
+        embedder = HuggingFaceEmbeddings(
+            model_name=EMBED_MODEL,
+            encode_kwargs={"normalize_embeddings": True}  
+            )
         db = Chroma(
             persist_directory=INDEX_DIR,
             embedding_function=embedder
@@ -39,13 +43,37 @@ if vectordb is None:
     raise SystemExit("벡터 DB 초기화에 실패하여 프로그램을 종료합니다.")
 
 
+def chunk_text(text: str, max_chars: int = 500, min_chars: int = 100):
+    # 문장 단위 분할
+    sentences = re.split(r'(?<=[.!?])\s+(?=[가-힣A-Z])', str(text).strip())
+    chunks = []
+    temp_chunk = ""
+
+    for sent in sentences:
+        if len(temp_chunk) + len(sent) <= max_chars:
+            temp_chunk += " " + sent
+        else:
+            if temp_chunk.strip():
+                chunks.append(temp_chunk.strip())
+            temp_chunk = sent
+
+    if temp_chunk.strip():
+        # 마지막 청크가 너무 짧으면 이전과 합침
+        if chunks and len(temp_chunk) < min_chars:
+            chunks[-1] += " " + temp_chunk
+        else:
+            chunks.append(temp_chunk.strip())
+
+    return chunks
+
+
+
 def build_rag_index():
-    # 0) CSV 디렉터리 확인
+
     if not CSV_DIR.exists() or not CSV_DIR.is_dir():
         print(f"❌ CSV 디렉터리를 찾을 수 없습니다: {CSV_DIR}")
         return
 
-    # 1) 폴더 내 모든 CSV 파일 수집
     csv_files = list(CSV_DIR.glob("*.csv"))
     if not csv_files:
         print(f"⚠️ '{CSV_DIR}' 안에 .csv 파일이 없습니다.")
@@ -53,47 +81,47 @@ def build_rag_index():
 
     all_docs = []
     for csv_file in csv_files:
+        
         try:
             df = pd.read_csv(csv_file)
+            df.dropna(subset=["link_url"], inplace=True)
+
         except Exception as e:
             print(f"⚠️ 파일 로드 실패 ({csv_file.name}): {e}")
             continue
-
-        # content 컬럼 결측 제거, metadata에 파일명 추가
-        df = df.dropna(subset=["content"])
-        docs = [
-            Document(
-                page_content=row["content"],
-                metadata={
+        chunk_size = 0
+        for _, row in df.iterrows():
+            doc_id = row['link_url']# 또는 고유 해시
+            chunks = chunk_text(row["content"], max_chars=500, min_chars=100)
+            for chunk in chunks:
+                metadata = {
+                    "doc_id": doc_id,
                     "title": row.get("title", ""),
                     "date": row.get("date", ""),
-                    "source": csv_file.name
+                    "link": row.get("link_url", ""),
+                    "corp": row.get("corp", ""),
+                    "impact_score": row.get("impact_score", 0)
                 }
-            )
-            for _, row in df.iterrows()
-        ]
-        if docs:
-            print(f"Loaded {csv_file.name}: {len(docs)} docs")
-            all_docs.extend(docs)
+                all_docs.append(Document(page_content=chunk, metadata=metadata))
+            chunk_size += len(chunks)
+        print(f"Loaded {csv_file.name}: {chunk_size} docs (after splitting)")
 
     if not all_docs:
         print("⚠️ 처리할 문서가 하나도 없습니다.")
         return
+    
+    for i in range(0, len(all_docs), 500):
+        batch = all_docs[i:i+500]
+        vectordb.add_documents(batch)
 
-    # 2) 전체 문서를 한 번에 청크 분할
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-    chunked = splitter.split_documents(all_docs)
-    if not chunked:
-        print("⚠️ 분할된 청크가 없습니다. CSV 내용을 확인하세요.")
-        return
+    print(f"✅ RAG 인덱스 생성 완료: {len(all_docs)} 문서/청크 저장됨")
 
-    # 3) 인덱스에 추가
-    vectordb.add_documents(chunked)
-    print(f"✅ RAG 인덱스 생성 완료: {len(chunked)} 청크 저장됨")
 
 # ————————————————————————
+#build_rag_index()
+#스크립트 첫 실행 시 인덱스 없으면 생성
 
-# 스크립트 첫 실행 시 인덱스 없으면 생성
+
 if vectordb._collection.count() == 0:
     print(f"❗️ 인덱스 폴더 '{INDEX_DIR}'가 비어 있습니다. 새로 생성합니다.")
     build_rag_index()

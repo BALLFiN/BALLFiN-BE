@@ -4,4 +4,5 @@ __pycache__/
 *.pyc
 *.pyo
 chroma.sqlite3
- 
+chroma_db/
+function_test.ipynb
