@@ -4,8 +4,11 @@ import requests
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from app.db.mongo import company_collection  # 가정: DB 컬렉션은 여기서 가져옵니다.
+from app.db.mongo import company_collection, stock_collection  # 가정: DB 컬렉션은 여기서 가져옵니다.
 from pymongo import DESCENDING, ASCENDING
+import pandas as pd
+import talib
+from app.services.financial_analysis import get_yahoo_data, get_interest_rate
 
 router = APIRouter()
 
@@ -21,75 +24,6 @@ TICKERS = {
     # "ethereum": "ETH-USD"       # 이더리움
 }
 
-def get_yahoo_data(symbol: str):
-    """Yahoo Finance에서 단일 심볼 데이터 조회"""
-    try:
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="1d")
-        info = ticker.info
-        print(hist)
-        print(info)
-        if hist.empty:
-            return {"error": "데이터 없음"}
-        
-        current_price = hist['Close'].iloc[-1]
-        prev_close = info.get('previousClose', current_price)
-        change = current_price - prev_close
-        change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
-        
-        historical_data = []
-        today = datetime.now()
-        for i in range(10):
-            past_date = today - timedelta(days=i)
-            historical_data.append({
-                "date": past_date.strftime('%Y-%m-%d'),
-                "price": round(current_price, 2)
-            })
-        
-        return {
-            "price": round(current_price, 2),
-            "change": round(change, 2),
-            "change_percent": round(change_percent, 2),
-            "volume": int(hist['Volume'].iloc[-1]) if 'Volume' in hist.columns else 0,
-            "historical_data": historical_data,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-    
-def get_interest_rate():
-    """한국은행 기준금리 조회"""
-    api_key = os.getenv("BOK_API_KEY")
-    
-    # 최근 30일 데이터 조회
-    today = datetime.now().strftime("%Y%m%d")
-    start_date = datetime.now().replace(day=1).strftime("%Y%m%d")
-    url = f'https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/100/722Y001/D/{start_date}/{today}/0101000'
-    
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if 'StatisticSearch' in data and 'row' in data['StatisticSearch']:
-                print(data)
-                rate_data = data['StatisticSearch']['row'][-1]
-                historical_data = []
-                base_date = datetime.now()
-                for i in range(10):
-                    past_date = base_date - timedelta(days=i)
-                    historical_data.append({
-                        "date": past_date.strftime('%Y-%m-%d'),
-                        "rate": float(rate_data['DATA_VALUE'])
-                    })               
-                return {
-                    "rate": float(rate_data['DATA_VALUE']),
-                    "historical_data": historical_data,
-                    "timestamp": datetime.now().isoformat()
-                }
-        return {"error": "데이터 조회 실패"}
-    except Exception as e:
-        return {"error": str(e)}
     
 @router.get("/kospi", summary="코스피 실시간 시세")
 async def get_kospi():
@@ -248,3 +182,4 @@ def get_all_company_data(
         })
         
     return results
+
