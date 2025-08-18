@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from app.db.mongo import company_collection, stock_collection  # 가정: DB 컬렉션은 여기서 가져옵니다.
+from app.db.mongo import company_collection # 가정: DB 컬렉션은 여기서 가져옵니다.
 from pymongo import DESCENDING, ASCENDING
 import pandas as pd
 import talib
@@ -76,6 +76,12 @@ def get_stock_info_yfinance(stock_code: str) -> dict:
     ticker_symbol = f"{stock_code}.KS"
     
     try:
+        # 1. [변경] MongoDB에서 한글 종목명 조회
+        korean_name = None
+        company_doc = company_collection.find_one({"stock_code": stock_code})
+        if company_doc:
+            korean_name = company_doc.get("corp_name")
+
         # 1. yfinance Ticker 객체 생성
         ticker = yf.Ticker(ticker_symbol)
 
@@ -100,6 +106,7 @@ def get_stock_info_yfinance(stock_code: str) -> dict:
         # 4. 데이터 취합 및 최종 결과 생성
         # yfinance는 '거래대금'을 직접 제공하지 않으므로, 현재가 * 거래량으로 근사 계산합니다.
         result = {
+            "기업명": korean_name,
             "현재가": current_price,
             "등락": round(((info.get('regularMarketPrice', 0) / info.get('previousClose', 1)) - 1) * 100, 2),
             "전일대비": round(info.get('regularMarketPrice', 0) - info.get('previousClose', 0)),
@@ -414,7 +421,7 @@ def analyze_stochastic(slowk):
 
 def analyze_main_data(df: pd.DataFrame, history_days: int = 30):
     """
-    주요 기술적 지표를 계산하고, 과거 데이터를 포함하여 분석 결과를 반환합니다. (수정됨)
+    주요 기술적 지표를 계산하고, 과거 데이터를 포함하여 분석 결과를 반환합니다.
     """
     if len(df) < 60:
         return {"error": f"데이터가 60일치 미만이라 모든 지표를 분석할 수 없습니다."}
