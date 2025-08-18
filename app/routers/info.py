@@ -8,7 +8,7 @@ from app.db.mongo import company_collection, stock_collection  # 가정: DB 컬�
 from pymongo import DESCENDING, ASCENDING
 import pandas as pd
 import talib
-from app.services.financial_analysis import get_yahoo_data, get_interest_rate
+from app.services.financial_analysis import get_yahoo_data, get_interest_rate, fetch_stock_data, combine_all_data, get_stock_info_yfinance
 
 router = APIRouter()
 
@@ -182,4 +182,24 @@ def get_all_company_data(
         })
         
     return results
+
+@router.get(
+    "/stock/{stock_code}", 
+    summary="개별 주식 상세페이지의 주가정보를 제공하는 api",
+    description="경로 파라미터로 stock_code를 입력받아 상세한 주가정보를 제공하는 api"
+)
+async def get_stock_data(stock_code: str):
+    result, _ = get_stock_info_yfinance(stock_code)
+    return result
+
+
+@router.get(
+    "/company/{stock_code}", 
+    summary="개별 주식 상세페이지의 기술적 분석, 재무분석 페이지의 데이터를 제공하는 api",
+    description="경로 파라미터로 stock_code를 입력받아 기술적 분석, 재무분석 페이지의 데이터를 제공하는 api"
+)
+async def get_stock_data(stock_code: str):
+    financial_df = fetch_stock_data(stock_collection, stock_code)
+    result = combine_all_data(financial_df, stock_code)
+    return result
 

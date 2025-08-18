@@ -10,6 +10,8 @@ import talib
 from pprint import pprint
 import numpy as np
 import json
+from pykrx import stock
+
 
 # 티커 심볼 매핑
 TICKERS = {
@@ -59,7 +61,63 @@ def get_yahoo_data(symbol: str):
         
     except Exception as e:
         return {"error": str(e)}
+
+def get_stock_info_yfinance(stock_code: str) -> dict:
+    """
+    yfinance를 사용하여 지정된 주식 코드의 상세 정보와 PER, PBR을 조회합니다.
+
+    Args:
+        stock_code (str): 조회할 종목의 6자리 코드 (예: "005930")
+
+    Returns:
+        dict: 주식의 상세 정보가 담긴 딕셔너리. 조회 실패 시 에러 메시지를 반환합니다.
+    """
+    # yfinance 형식에 맞게 종목 코드 변환 (기본: 코스피 .KS)
+    ticker_symbol = f"{stock_code}.KS"
     
+    try:
+        # 1. yfinance Ticker 객체 생성
+        ticker = yf.Ticker(ticker_symbol)
+
+        # 2. 주요 정보 한 번에 가져오기
+        # .info는 PER, PBR, 52주 최고/최저 등 대부분의 정보를 포함하고 있어 효율적입니다.
+        info = ticker.info
+
+        # .info에 데이터가 없는 경우 에러 처리
+        if not info or 'regularMarketPrice' not in info:
+             return {"error": f"'{ticker_symbol}'에 대한 정보를 찾을 수 없습니다. 종목 코드를 확인해주세요."}
+
+        # 3. 52주 최고/최저 날짜 및 전일 거래량 조회 (history 필요)
+        hist_1y = ticker.history(period="1y")
+        high_52w_date = hist_1y['High'].idxmax().strftime('%Y-%m-%d')
+        low_52w_date = hist_1y['Low'].idxmin().strftime('%Y-%m-%d')
+        
+        # 전일 거래량은 2일치 데이터에서 첫 번째(가장 오래된) 행의 값을 사용
+        hist_2d = ticker.history(period="2d")
+        prev_day_volume = hist_2d.iloc[0]['Volume'] if not hist_2d.empty else 0
+        
+        current_price = int(info.get('regularMarketPrice'))
+        # 4. 데이터 취합 및 최종 결과 생성
+        # yfinance는 '거래대금'을 직접 제공하지 않으므로, 현재가 * 거래량으로 근사 계산합니다.
+        result = {
+            "현재가": current_price,
+            "등락": round(((info.get('regularMarketPrice', 0) / info.get('previousClose', 1)) - 1) * 100, 2),
+            "전일대비": round(info.get('regularMarketPrice', 0) - info.get('previousClose', 0)),
+            "전일거래량": int(prev_day_volume),
+            "거래량": info.get('volume'),
+            "거래대금": int((info.get('regularMarketPrice', 0) * info.get('volume', 0)) / 100000000),
+            "52주최고": int(info.get('fiftyTwoWeekHigh')),
+            "최고일": high_52w_date,
+            "52주최저": info.get('fiftyTwoWeekLow'),
+            "최저일": low_52w_date,
+            "상한가": int(info.get('previousClose', 0) * 1.3),
+            "하한가": int(info.get('previousClose', 0) * 0.7)
+        }
+        return result, current_price
+
+    except Exception as e:
+        return {"error": f"'{ticker_symbol}' 정보를 가져오는 중 오류가 발생했습니다: {e}"}
+
 def get_interest_rate():
     """한국은행 기준금리 조회"""
     api_key = os.getenv("BOK_API_KEY")
@@ -92,21 +150,79 @@ def get_interest_rate():
         return {"error": "데이터 조회 실패"}
     except Exception as e:
         return {"error": str(e)}
-    
-def get_financial_data(stock_code, years_to_fetch=5):
+
+def get_today_per_pbr():
+    today = datetime.today().strftime("%Y%m%d")
+    df = stock.get_market_fundamental(today, today, "005930")   # 삼성전자 예시
+    if df.empty:
+        return None, None
+    print(df)
+    # 4. PER, PBR 값 추출 후 반환
+    per = round(df.loc[today, 'PER'], 2)
+    pbr = round(df.loc[today, 'PBR'], 2)
+    #eps = df.loc[today, 'EPS']
+    #bps = df.loc[today, 'BPS']
+    return per, pbr
+
+KEY_MAP = {
+    'PBR': 'PBR',
+    'PER': 'PER',
+    'roe_val': 'ROE',
+    'sale_account': '매출액',
+    'grs': '매출액 증가율',
+    'bsop_prti': '영업이익',
+    'bsop_prfi_inrt': '영업이익 증가율',
+    'thtr_ntin': '순이익',
+    'ntin_inrt': '순이익 증가율',
+    'total_aset': '자산총계',
+    'total_lblt': '부채총계',
+    'total_cptl': '자본총계',
+    'lblt_rate': '부채비율',
+    'rsrv_rate': '유보율',
+}
+
+def filter_and_rename_keys(original_dict: dict, key_map: dict) -> dict:
     """
-    MongoDB에서 재무 데이터를 가져와 최신 분기 데이터와 최근 N개년 데이터를 반환합니다.
+    key_map에 정의된 키들만 original_dict에서 선택하여,
+    새로운 키 이름으로 변경한 딕셔너리를 반환합니다.
+
+    Args:
+        original_dict (dict): 원본 재무 데이터 딕셔너리.
+        key_map (dict): {추출할 원본 키: 새 키} 형태의 매핑 딕셔너리.
+
+    Returns:
+        dict: 선택되고 키 이름이 변경된 새로운 딕셔너리.
+    """
+    new_dict = {}
+    # key_map을 기준으로 루프를 돕니다.
+    for old_key, new_key in key_map.items():
+        # 원본 딕셔너리에 해당 키(old_key)가 있는지 확인합니다.
+        if old_key in original_dict:
+            # 키가 있다면, 새 키 이름(new_key)과 원본 값을 new_dict에 추가합니다.
+            new_dict[new_key] = original_dict[old_key]
+            
+    return new_dict
+
+def get_financial_data(stock_code, years_to_fetch=2):
+    """
+    MongoDB에서 재무 데이터를 가져와 PER, PBR을 계산하고,
+    최신 분기 데이터와 최근 N개년 데이터를 반환합니다.
 
     Args:
         stock_code (str): 조회할 종목 코드.
-        years_to_fetch (int, optional): 가져올 최근 데이터의 연 수. 기본값은 5입니다.
+        current_price (int or float): PER, PBR 계산을 위한 현재 주가.
+        years_to_fetch (int, optional): 가져올 최근 데이터의 연 수. 기본값은 2입니다.
 
     Returns:
         tuple: (최신 분기 데이터, 최근 N개년 데이터) 형태의 튜플.
+               최신 분기 데이터에는 PER, PBR이 추가됩니다.
                데이터 조회나 처리에 실패하면 (None, None)을 반환합니다.
     """
-    financial_data = None
 
+    _, current_price = get_stock_info_yfinance(stock_code)
+
+    # --- 1. 데이터베이스 조회 ---
+    financial_data = None
     try:
         document = company_collection.find_one({'stock_code': stock_code})
         
@@ -120,10 +236,8 @@ def get_financial_data(stock_code, years_to_fetch=5):
         print(f"❌ 데이터베이스 조회 중 오류 발생: {e}")
         return None, None
 
-
     # --- 2. 데이터 처리 ---
     if not financial_data:
-        # financial_data가 비어있는 경우 처리
         print(f"⚠️ [{stock_code}] 재무 데이터가 비어있습니다.")
         return None, None
         
@@ -132,9 +246,17 @@ def get_financial_data(stock_code, years_to_fetch=5):
         latest_quarter = max(financial_data.keys())
         latest_data = financial_data[latest_quarter]
 
+        # 계산된 값을 최신 분기 데이터 딕셔너리에 추가
+        latest_data['PER'] = 1
+        latest_data['PBR'] = 1
+        latest_data = filter_and_rename_keys(latest_data, KEY_MAP)
+        # ========================================================================
+
         # 2-2. 최근 N개년 데이터 가져오기
         latest_year = int(latest_quarter[:4])
-        start_year = latest_year - years_to_fetch
+        # years_to_fetch가 0일 경우를 대비해 start_year 계산 방식을 수정합니다.
+        start_year = latest_year - (years_to_fetch - 1) if years_to_fetch > 0 else latest_year
+        
         recent_n_years_data = {
             quarter: data
             for quarter, data in financial_data.items()
@@ -220,13 +342,13 @@ def analyze_ma_price(current_price, ma20, proximity_threshold=1.0):
     description = ""
 
     if abs(diff_percent) <= proximity_threshold:
-        status = "🚦 횡보 신호"
+        status = "횡보 신호"
         description = "현재 주가가 20일 이동평균선에 근접하여, 방향성을 탐색하고 있습니다."
     elif current_price > ma20:
-        status = "📈 상승 신호"
+        status = "상승 신호"
         description = "현재 주가는 20일 이동평균선 위에 위치하여, 단기 상승 추세에 있습니다."
     else:
-        status = "📉 하락 신호"
+        status = "하락 신호"
         description = "현재 주가는 20일 이동평균선 아래에 위치하여, 단기 하락 추세에 있습니다."
     
     return {"status": status, "description": description}
@@ -237,13 +359,13 @@ def analyze_ma_arrangement(ma5, ma20, ma60):
     description = ""
 
     if ma5 > ma20 and ma20 > ma60:
-        status = "📈 정배열 (강력한 상승 추세)"
+        status = "정배열"
         description = "현재 단기-중기-장기 이동평균선이 정배열 상태로, 강력한 상승 추세를 보여주고 있습니다."
     elif ma60 > ma20 and ma20 > ma5:
-        status = "📉 역배열 (강력한 하락 추세)"
+        status = "역배열"
         description = "현재 이동평균선들이 역배열 상태로, 강력한 하락 추세가 진행 중입니다."
     else:
-        status = "🚦 혼조세 (방향성 없음)"
+        status = "혼조세"
         description = "현재 이동평균선들이 혼조세를 보이며, 뚜렷한 방향성 없이 횡보하고 있습니다."
         
     return {"status": status, "description": description}
@@ -263,13 +385,13 @@ def analyze_rsi(rsi):
     status = ""
     description = ""
     if rsi > 70:
-        status = "🥵 과매수"
+        status = "과매수"
         description = f"RSI가 {rsi:.2f}로 70 이상이므로 시장이 과열되었다는 신호입니다. 단기적인 가격 조정 가능성이 있습니다."
     elif rsi < 30:
-        status = "🥶 과매도"
+        status = "과매도"
         description = f"RSI가 {rsi:.2f}로 30 이하이므로 시장이 침체되었다는 신호입니다. 기술적 반등을 기대해볼 수 있습니다."
     else:
-        status = "NEUTRAL 중립"
+        status = "중립"
         description = f"RSI가 {rsi:.2f}로 중립 구간에 있어, 현재는 매수와 매도 힘이 균형을 이루고 있습니다."
 
     return {"value": round(rsi, 2), "status": status, "analysis": description}
@@ -279,13 +401,13 @@ def analyze_stochastic(slowk):
     status = ""
     description = ""
     if slowk > 80:
-        status = "🥵 과매수"
+        status = "과매수"
         description = f"스토캐스틱(%K) 값이 {slowk:.2f}로 과매수 구간에 진입하여 단기 조정 가능성이 있습니다."
     elif slowk < 20:
-        status = "🥶 과매도"
+        status = "과매도"
         description = f"스토캐스틱(%K) 값이 {slowk:.2f}로 과매도 구간에 있어 기술적 반등을 기대해볼 수 있습니다."
     else:
-        status = "NEUTRAL 중립"
+        status = "중립"
         description = f"스토캐스틱(%K) 값이 {slowk:.2f}로 중립 구간(20~80)에 위치하고 있습니다."
 
     return {"value": round(slowk, 2), "status": status, "analysis": description}
@@ -378,13 +500,13 @@ def analyze_rvi(rvi_series, signal_series):
     analysis = ""
 
     if rvi2 < sig2 and rvi1 > sig1:
-        status = "📈 상승 활력 강화"
+        status = "상승 활력 강화"
         analysis = "최근 RVI 선이 시그널 선을 상향 돌파(골든크로스)하여, 상승 추세의 힘이 강해지고 있습니다."
     elif rvi2 > sig2 and rvi1 < sig1:
-        status = "📉 하락 활력 강화"
+        status = "하락 활력 강화"
         analysis = "최근 RVI 선이 시그널 선을 하향 돌파(데드크로스)하여, 하락 추세의 힘이 강해지고 있습니다."
     else:
-        status = "🚦 활력 교착 상태"
+        status = "활력 교착 상태"
         analysis = "RVI 선과 시그널 선이 얽혀있어, 현재 추세의 방향성이 약해지고 있습니다."
     
     return {
@@ -411,7 +533,7 @@ def analyze_atr(atr_value, avg_atr_value, current_price):
     )
     
     return {
-        "status": f"📊 변동성 {status_text}",
+        "status": f"변동성 {status_text}",
         "analysis": analysis,
         "value": {
             "atr": f"{atr_value:,.0f}",
@@ -419,13 +541,14 @@ def analyze_atr(atr_value, avg_atr_value, current_price):
         }
     }
 
+
 def analyze_volatility(vol_value, avg_vol_value):
     """## 🌋 변동폭 (Standard Deviation) 분석 (수정됨)"""
     status_text = "평균 수준"
     if vol_value > avg_vol_value * 1.2:
         status_text = "높은 수준"
     elif vol_value < avg_vol_value * 0.8:
-        status_text = "낮은 수준(에너지 응축)"
+        status_text = "낮은 수준"
         
     analysis = (
         f"현재 변동성은 {vol_value:.2f}%로, 과거 평균({avg_vol_value:.2f}%) 대비 {status_text}입니다. "
@@ -433,13 +556,14 @@ def analyze_volatility(vol_value, avg_vol_value):
     )
         
     return {
-        "status": f"🔥 에너지 {status_text}",
+        "status": f"에너지 {status_text}",
         "analysis": analysis,
         "value": {
             "volatility_percent": round(vol_value, 2),
             "avg_volatility_percent": round(avg_vol_value, 2)
         }
     }
+
 
 def analyze_volatility_data(df: pd.DataFrame, history_days: int = 30):
     """
@@ -458,7 +582,7 @@ def analyze_volatility_data(df: pd.DataFrame, history_days: int = 30):
     df.dropna(inplace=True)
     if len(df) < 2:
         return {"error": "지표 계산 후 분석할 데이터가 부족합니다."}
-    
+
     latest = df.iloc[-1]
     latest_price = latest['close']
     avg_atr = df['atr'].rolling(window=50).mean().iloc[-1]
@@ -503,13 +627,13 @@ def analyze_mfi(mfi_value):
     """## 💰 MFI (Money Flow Index) 분석"""
     status, analysis = "", ""
     if mfi_value > 80:
-        status = "🥵 과매수 신호"
+        status = "과매수 신호"
         analysis = f"MFI가 {mfi_value:.2f}로, 시장에 자금이 과도하게 유입되어 단기 과열 상태입니다. 차익 실현 매물에 주의가 필요합니다."
     elif mfi_value < 20:
-        status = "🥶 과매도 신호"
+        status = "과매도 신호"
         analysis = f"MFI가 {mfi_value:.2f}로, 자금 유출이 과도하여 시장이 침체되었습니다. 저가 매수세 유입 가능성이 있습니다."
     else:
-        status = "🚦 중립 상태"
+        status = "중립 상태"
         analysis = f"MFI가 {mfi_value:.2f}로, 자금 유입과 유출이 균형을 이루고 있습니다."
     
     return {"status": status, "analysis": analysis, "value": round(mfi_value, 2)}
@@ -522,10 +646,10 @@ def analyze_obv(obv_series):
     
     status, analysis = "", ""
     if latest_obv > latest_obv_ma:
-        status = "📈 매집 추세"
+        status = "매집 추세"
         analysis = "OBV가 OBV 이동평균선 위에 위치하여, 주가 상승일에 거래량이 많아 매집 에너지가 축적되고 있을 가능성이 높습니다."
     else:
-        status = "📉 분산 추세"
+        status = "분산 추세"
         analysis = "OBV가 OBV 이동평균선 아래에 위치하여, 주가 하락일에 거래량이 많아 매도 압력이 더 강한 것으로 보입니다."
         
     return {"status": status, "analysis": analysis, "value": {"obv": f"{latest_obv:,.0f}", "obv_ma20": f"{latest_obv_ma:,.0f}"}}
@@ -550,7 +674,7 @@ def analyze_volume(current_volume, avg_volume):
     )
     
     return {
-        "status": f"📊 관심도 {status_text.split(' ')[0]}",
+        "status": f"관심도 {status_text.split(' ')[0]}",
         "analysis": analysis,
         "value": {"volume": f"{current_volume:,.0f}", "avg_volume_20": f"{avg_volume:,.0f}"}
     }
@@ -608,33 +732,81 @@ def analyze_volume_data(df: pd.DataFrame, history_days: int = 30):
     }
 
 
+def generate_simple_summary():
+    return "종합적인 분석 정보입니다."
 
 
+def remove_history_from_analysis(analysis_result: dict) -> dict:
+    """
+    분석 결과 딕셔너리를 받아서 각 지표 안에 있는 'history' 키를 제거합니다.
+    """
+    if 'error' in analysis_result:
+        return analysis_result
+    
+    for indicator_data in analysis_result.values():
+        if isinstance(indicator_data, dict) and 'history' in indicator_data:
+            del indicator_data['history']
+            
+    return analysis_result
 
 
+def combine_all_data(df, stock_code):
+    """
+    주요 지표, 변동성 지표, 거래량 지표 분석을 모두 실행하고
+    각 섹션별 요약(total_analysis)을 추가한 후, history 데이터를 제외하여
+    하나의 JSON 객체로 통합합니다.
+    """
+    # 1. 각 분석 함수를 호출합니다.
+
+    main_analysis = analyze_main_data(df.copy())
+    if 'error' in main_analysis: return main_analysis
+
+    volatility_analysis = analyze_volatility_data(df.copy())
+    if 'error' in volatility_analysis: return volatility_analysis
+        
+    volume_analysis = analyze_volume_data(df.copy())
+    if 'error' in volume_analysis: return volume_analysis
+    
+    company_data, _ = get_financial_data(stock_code)
+
+    # 2. 각 섹션별 요약 분석을 생성합니다.
+    main_analysis['total_analysis'] = generate_simple_summary()
+    volatility_analysis['total_analysis'] = generate_simple_summary()
+    volume_analysis['total_analysis'] = generate_simple_summary()
+    company_data['total_analysis'] = generate_simple_summary()
+
+    # 3. 각 분석 결과에서 'history' 데이터를 제거합니다.
+    main_without_history = remove_history_from_analysis(main_analysis)
+    volatility_without_history = remove_history_from_analysis(volatility_analysis)
+    volume_without_history = remove_history_from_analysis(volume_analysis)
+
+    # 4. 최종 JSON 구조로 조합하여 반환합니다.
+    combined_result = {
+        "main_analysis": main_without_history,
+        "volatility_analysis": volatility_without_history,
+        "volume_analysis": volume_without_history,
+        "company_analysis": company_data
+    }
+    
+    return combined_result
 
 
+# financial_df = fetch_stock_data(stock_collection, "005930")
+# result = combine_all_data(financial_df, "005930")
+# pprint(result)
+# result2, _ = get_stock_info_yfinance("005930")
+# pprint(result2)
 
+# print(get_stock_info_yfinance("005930"))
 
-
-
-
-
-
-
-
-
-
-financial_df = fetch_stock_data(stock_collection, "005930")
-
-result1 = analyze_main_data(financial_df.copy())
-pprint(result1)
-print("---------------------------------------------------")
-result2 = analyze_volatility_data(financial_df.copy())
-pprint(result2)
-print("---------------------------------------------------")
-result3 = analyze_volume_data(financial_df.copy())
-pprint(result3)
-print("---------------------------------------------------")
-result4 = get_financial_data("005930")
-pprint(result4)
+# result1 = analyze_main_data(financial_df.copy(), 5)
+# pprint(result1)
+# print("---------------------------------------------------")
+# result2 = analyze_volatility_data(financial_df.copy(), 10)
+# pprint(result2)
+# print("---------------------------------------------------")
+# result3 = analyze_volume_data(financial_df.copy(), 10)
+# pprint(result3)
+# print("---------------------------------------------------")
+# result4 = get_financial_data("005930")
+# pprint(result4)

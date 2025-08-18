@@ -40,3 +40,4 @@ regex
 tqdm                      # Optional: 로깅/진행 바
 pandas
 TA-Lib					  # 차트 분석
+pykrx
