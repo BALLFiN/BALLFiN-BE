@@ -12,7 +12,6 @@ import numpy as np
 import json
 from pykrx import stock
 
-
 # 티커 심볼 매핑
 TICKERS = {
     "kospi": "^KS11",           # 코스피
@@ -563,11 +562,11 @@ def analyze_volatility(vol_value, avg_vol_value):
     )
         
     return {
-        "status": f"에너지 {status_text}",
+        "status": f"변동성 {status_text}",
         "analysis": analysis,
         "value": {
             "volatility_percent": round(vol_value, 2),
-            "avg_volatility_percent": round(avg_vol_value, 2)
+            "avg50_volatility_percent": round(avg_vol_value, 2)
         }
     }
 

@@ -194,3 +194,56 @@ def get_news_detail(
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"오류 발생: {str(e)}")
+
+@router.get(
+    "/by-company/{stock_code}",
+    summary="특정 기업 관련 뉴스 목록 조회",
+    description="""
+    특정 종목 코드(stock_code)가 `related_companies` 필드에 포함된 뉴스 목록을 최신순으로 조회합니다.
+
+    - **stock_code**: 조회할 6자리 종목 코드 (예: "005930").
+    - **limit**: 가져올 최신 뉴스의 개수 (기본값: 10).
+    """
+)
+def get_news_by_company(
+    stock_code: str = Path(..., description="조회할 종목의 6자리 코드"),
+    limit: int = Query(10, description="조회할 최신 뉴스의 개수", ge=1, le=50)
+):
+    try:
+        # ✅ 1. DB에서 조건에 맞는 뉴스 조회
+        # related_companies 필드에 stock_code가 포함된 문서를 찾습니다.
+        query = {"related_companies": stock_code}
+        
+        # ✅ 2. 필요한 필드만 선택 (projection)
+        projection = {
+            "_id": 1,
+            "press": 1,
+            "title": 1,
+            "published_at": 1,
+            "impact": 1
+        }
+        
+        # ✅ 3. 최신순으로 정렬하고 개수 제한
+        cursor = news_collection.find(query, projection).sort("published_at", DESCENDING).limit(limit)
+        
+        # ✅ 4. 결과 가공
+        results = [
+            {
+                "id": str(doc["_id"]),
+                "press": doc.get("press"),
+                "title": doc.get("title"),
+                "published_at": doc.get("published_at").strftime("%Y-%m-%d %H:%M") if doc.get("published_at") else None,
+                "impact": doc.get("impact")
+            } 
+            for doc in cursor
+        ]
+
+        # 뉴스가 없을 경우 빈 리스트 반환
+        if not results:
+            return {"message": f"'{stock_code}' 관련 뉴스를 찾을 수 없습니다.", "results": []}
+
+        return {"results": results}
+
+    except Exception as e:
+        # 서버 오류 발생 시 500 에러 반환
+        raise HTTPException(status_code=500, detail=f"데이터 조회 중 오류 발생: {str(e)}")
