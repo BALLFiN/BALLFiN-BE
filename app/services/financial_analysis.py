@@ -216,7 +216,6 @@ def get_financial_data(stock_code, years_to_fetch=2):
 
     Args:
         stock_code (str): 조회할 종목 코드.
-        current_price (int or float): PER, PBR 계산을 위한 현재 주가.
         years_to_fetch (int, optional): 가져올 최근 데이터의 연 수. 기본값은 2입니다.
 
     Returns:
@@ -224,16 +223,22 @@ def get_financial_data(stock_code, years_to_fetch=2):
                최신 분기 데이터에는 PER, PBR이 추가됩니다.
                데이터 조회나 처리에 실패하면 (None, None)을 반환합니다.
     """
-
-    _, current_price = get_stock_info_yfinance(stock_code)
-
     # --- 1. 데이터베이스 조회 ---
     financial_data = None
+    per_from_db = None # [추가] PER, PBR 변수 초기화
+    pbr_from_db = None
+
     try:
         document = company_collection.find_one({'stock_code': stock_code})
         
         if document:
             financial_data = document.get('financial_data')
+            
+            # [추가] market_data 객체에서 PER, PBR 가져오기
+            market_data = document.get("market_data", {}) # market_data가 없을 경우를 대비
+            if market_data:
+                per_from_db = market_data.get("per")
+                pbr_from_db = market_data.get("pbr")
         else:
             print(f"⚠️ [{stock_code}] 데이터베이스에서 해당 종목을 찾을 수 없습니다.")
             return None, None
@@ -252,15 +257,16 @@ def get_financial_data(stock_code, years_to_fetch=2):
         latest_quarter = max(financial_data.keys())
         latest_data = financial_data[latest_quarter]
 
-        # 계산된 값을 최신 분기 데이터 딕셔너리에 추가
-        latest_data['PER'] = 1
-        latest_data['PBR'] = 1
+        # [변경] 하드코딩된 값 대신 DB에서 가져온 값으로 PER, PBR 추가
+        # DB에 값이 없는 경우(None)를 대비해 기본값 0.0을 사용
+        latest_data['PER'] = per_from_db if per_from_db is not None else 0.0
+        latest_data['PBR'] = pbr_from_db if pbr_from_db is not None else 0.0
+        
+        # KEY_MAP을 이용해 키 이름 변경 및 필터링
         latest_data = filter_and_rename_keys(latest_data, KEY_MAP)
-        # ========================================================================
 
         # 2-2. 최근 N개년 데이터 가져오기
         latest_year = int(latest_quarter[:4])
-        # years_to_fetch가 0일 경우를 대비해 start_year 계산 방식을 수정합니다.
         start_year = latest_year - (years_to_fetch - 1) if years_to_fetch > 0 else latest_year
         
         recent_n_years_data = {
@@ -791,7 +797,8 @@ def combine_all_data(df, stock_code):
         "main_analysis": main_without_history,
         "volatility_analysis": volatility_without_history,
         "volume_analysis": volume_without_history,
-        "company_analysis": company_data
+        "company_analysis": company_data,
+        "fin_total_analysis": "주요, 거래량, 변동성을 종합적으로 분석한 결과입니다"
     }
     
     return combined_result
