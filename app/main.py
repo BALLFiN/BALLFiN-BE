@@ -15,10 +15,10 @@ app.add_middleware(
 )
 
 # ✅ 라우터 등록
-app.include_router(auth.router, prefix="/auth")
-app.include_router(user.router, prefix="/user")
-app.include_router(post.router, prefix="/posts")
-app.include_router(chat.router, prefix="/chat")
-app.include_router(news.router, prefix="/news")
-app.include_router(stock.router, prefix="/stock")
-app.include_router(info.router, prefix="/info")
+app.include_router(auth.router, prefix="/api/auth")
+app.include_router(user.router, prefix="/api/user")
+app.include_router(post.router, prefix="/api/posts")
+app.include_router(chat.router, prefix="/api/chat")
+app.include_router(news.router, prefix="/api/news")
+app.include_router(stock.router, prefix="/api/stock")
+app.include_router(info.router, prefix="/api/info")

@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from app.db.mongo import company_collection # 가정: DB 컬렉션은 여기서 가져옵니다.
+from app.db.mongo import company_collection, stock_collection# 가정: DB 컬렉션은 여기서 가져옵니다.
 from pymongo import DESCENDING, ASCENDING
 import pandas as pd
 import talib
@@ -11,6 +11,7 @@ from pprint import pprint
 import numpy as np
 import json
 from pykrx import stock
+from openai import OpenAI
 
 # 티커 심볼 매핑
 TICKERS = {
@@ -128,17 +129,22 @@ def get_interest_rate():
     """한국은행 기준금리 조회"""
     api_key = os.getenv("BOK_API_KEY")
     
-    # 최근 30일 데이터 조회
     today = datetime.now().strftime("%Y%m%d")
     start_date = datetime.now().replace(day=1).strftime("%Y%m%d")
+    
     url = f'https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/100/722Y001/D/{start_date}/{today}/0101000'
     
     try:
         response = requests.get(url, timeout=10)
+        # --- 2. API 응답 로그 (가장 중요) ---
+        print(f"✅ 응답 코드: {response.status_code}")
+        # 응답 내용을 .text로 먼저 확인 (JSON 변환 에러 방지)
+        print("✅ 응답 내용 (text):")
+        print(response.text)
         if response.status_code == 200:
             data = response.json()
+
             if 'StatisticSearch' in data and 'row' in data['StatisticSearch']:
-                print(data)
                 rate_data = data['StatisticSearch']['row'][-1]
                 historical_data = []
                 base_date = datetime.now()
@@ -761,6 +767,95 @@ def remove_history_from_analysis(analysis_result: dict) -> dict:
             
     return analysis_result
 
+def clean_data_for_json(data):
+    if isinstance(data, dict):
+        return {k: clean_data_for_json(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [clean_data_for_json(i) for i in data]
+    if isinstance(data, np.generic):
+        return data.item()
+    return data
+
+def get_llm_analysis(company, main, volume, volatility):
+    """
+    LLM의 응답 형식을 검증하고, 올바르지 않을 경우 지정된 에러 메시지를 반환합니다.
+    """
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    except TypeError:
+        print("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        # 일관된 에러 응답 형식을 위해 딕셔너리로 반환
+        return {"error": "서버 설정 오류입니다."}
+
+    company_clean = clean_data_for_json(company)
+    main_clean = clean_data_for_json(main)
+    volume_clean = clean_data_for_json(volume)
+    volatility_clean = clean_data_for_json(volatility)
+    
+    # (프롬프트는 이전과 동일)
+    prompt = f"""
+        당신은 개별 지표의 의미를 설명하는 것이 아니라, 제공된 여러 수치들을 **종합적으로 해석**하여 투자자에게 통찰력을 제공하는 전문 주식 애널리스트입니다.
+        최종 응답은 반드시 5개의 키(company_analysis, main_analysis, volume_analysis, volatility_analysis, combined_technical_analysis)를 포함하는 단일 JSON 객체여야 합니다.
+        각 키의 값은 지표들 간의 관계를 분석한 '통합된 관점의 분석 결과'가 담긴 하나의 문자열이어야 합니다.
+        **절대로 PBR이 무엇인지, RSI가 무엇인지 같은 개별 지표에 대한 정의나 설명을 포함하지 마세요.**
+
+        --- [입력 데이터] ---
+        1. 기업 펀더멘털: {json.dumps(company_clean, ensure_ascii=False)}
+        2. 주요 기술 지표: {json.dumps(main_clean, ensure_ascii=False)}
+        3. 거래량 지표: {json.dumps(volume_clean, ensure_ascii=False)}
+        4. 변동성 지표: {json.dumps(volatility_clean, ensure_ascii=False)}
+
+        --- [분석 요청] ---
+        1.  **company_analysis**: 이 기업의 성장성(매출/이익 증가율)과 안정성(부채비율)이 현재의 밸류에이션(PER, PBR)과 어떻게 연결되는지 종합적으로 분석해주세요. 예를 들어, '높은 순이익 증가율에도 불구하고 PER이 높지 않은 것은 저평가 신호일 수 있다' 와 같이 해석해주세요.
+        2.  **main_analysis**: 주요 기술 지표들이 서로 어떤 신호를 주고받으며 현재 주가 상태를 형성하는지 종합적으로 설명해주세요. '이동평균선과 MACD는 하락 신호를 보내지만, RSI가 중립을 유지하는 것은 하락 에너지가 점차 소진되고 있음을 시사한다' 처럼 해석해주세요.
+        3.  **volume_analysis**: 거래량 관련 지표들을 통해 현재 시장의 수급 심리가 어떤 상태인지 종합적으로 분석해주세요. 'OBV상 매집 추세가 나타남에도 불구하고 실제 거래량이 평균 이하인 것은, 특정 주체가 조용히 매집 중이거나 혹은 시장의 관심이 아직 부족하다는 이중적인 의미를 가질 수 있다' 와 같이 심리를 추론해주세요.
+        4.  **volatility_analysis**: 변동성 지표들을 종합하여 향후 주가 움직임의 잠재적 에너지가 어떻게 응축되고 있는지 분석해주세요. '전반적인 변동성이 과거 대비 축소된 상태는 현재의 횡보 국면을 뒷받침하며, 이는 곧 큰 방향성이 나타나기 전 에너지 응축 과정일 수 있다' 처럼 설명해주세요.
+        5.  **combined_technical_analysis**: 위의 모든 기술적 지표(main, volume, volatility)를 하나의 통합된 시나리오로 엮어서 최종 결론을 내려주세요. '현재 주가는 하락 압력 속에서 힘의 균형을 찾아가고 있으며, 거래량이 줄고 변동성이 축소되는 것은 다음 방향성을 모색하는 폭풍전야의 고요함과 같다. 따라서...' 와 같이 종합적인 투자 전략을 제시해주세요.
+    """
+    
+    # --- [수정된 에러 처리 및 응답 검증 로직] ---
+    error_message = {"error": "오류가 발생했습니다. 새로고침 해주세요."}
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert financial analyst who provides insightful, integrated analysis in a JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        result_content = response.choices[0].message.content
+        
+        # 1. 받은 응답을 JSON(딕셔너리)으로 파싱
+        parsed_result = json.loads(result_content)
+
+        # 2. 필수 키 목록 정의
+        required_keys = [
+            "company_analysis", 
+            "main_analysis", 
+            "volume_analysis", 
+            "volatility_analysis", 
+            "combined_technical_analysis"
+        ]
+
+        # 3. 모든 필수 키가 응답에 포함되어 있는지 확인
+        if all(key in parsed_result for key in required_keys):
+            # 성공: 모든 키가 존재하면, 정상적으로 결과 반환
+            return parsed_result
+        else:
+            # 실패: 키가 누락되었으면, 서버에 로그를 남기고 에러 메시지 반환
+            print("에러: LLM 응답이 필수 키를 모두 포함하지 않습니다.")
+            return error_message
+
+    except json.JSONDecodeError as e:
+        # LLM 응답이 유효한 JSON 형태가 아닐 경우
+        print(f"에러: LLM 응답 JSON 파싱 실패 - {e}")
+        return error_message
+    except Exception as e:
+        # 그 외 모든 예외 (API 통신 오류 등)
+        print(f"에러: API 호출 중 예외 발생 - {e}")
+        return error_message
 
 def combine_all_data(df, stock_code):
     """
@@ -781,16 +876,23 @@ def combine_all_data(df, stock_code):
     
     company_data, _ = get_financial_data(stock_code)
 
-    # 2. 각 섹션별 요약 분석을 생성합니다.
-    main_analysis['total_analysis'] = generate_simple_summary()
-    volatility_analysis['total_analysis'] = generate_simple_summary()
-    volume_analysis['total_analysis'] = generate_simple_summary()
-    company_data['total_analysis'] = generate_simple_summary()
-
-    # 3. 각 분석 결과에서 'history' 데이터를 제거합니다.
+    # 2. 각 분석 결과에서 'history' 데이터를 제거합니다.
     main_without_history = remove_history_from_analysis(main_analysis)
     volatility_without_history = remove_history_from_analysis(volatility_analysis)
     volume_without_history = remove_history_from_analysis(volume_analysis)
+
+    # print(main_without_history)
+    # print('---------------------------')
+    # print(volatility_without_history)
+    # print('---------------------------')
+    # print(volume_without_history)
+    # print('---------------------------')
+    # print(company_data)
+
+    # 3. 각 섹션별 요약 분석을 생성합니다.
+    main_analysis['total_analysis'] = generate_simple_summary()
+    volume_analysis['total_analysis'] = generate_simple_summary()
+    company_data['total_analysis'] = generate_simple_summary()
 
     # 4. 최종 JSON 구조로 조합하여 반환합니다.
     combined_result = {
@@ -804,22 +906,42 @@ def combine_all_data(df, stock_code):
     return combined_result
 
 
+def llm_analysis(stock_code):
+    df = fetch_stock_data(stock_collection, stock_code)
+
+    main_analysis = analyze_main_data(df.copy())
+    if 'error' in main_analysis: return main_analysis
+
+    volatility_analysis = analyze_volatility_data(df.copy())
+    if 'error' in volatility_analysis: return volatility_analysis
+        
+    volume_analysis = analyze_volume_data(df.copy())
+    if 'error' in volume_analysis: return volume_analysis
+    
+    company_data, _ = get_financial_data(stock_code)
+
+    # 2. 각 분석 결과에서 'history' 데이터를 제거합니다.
+    main = remove_history_from_analysis(main_analysis)
+    volatility = remove_history_from_analysis(volatility_analysis)
+    volume = remove_history_from_analysis(volume_analysis)
+
+    llm_analysis_result = get_llm_analysis(company_data, main, volume, volatility)
+
+    return llm_analysis_result
+
+
 # financial_df = fetch_stock_data(stock_collection, "005930")
-# result = combine_all_data(financial_df, "005930")
-# pprint(result)
+# combine_all_data(financial_df, "005930")
 # result2, _ = get_stock_info_yfinance("005930")
 # pprint(result2)
 
 # print(get_stock_info_yfinance("005930"))
 
-# result1 = analyze_main_data(financial_df.copy(), 5)
-# pprint(result1)
-# print("---------------------------------------------------")
-# result2 = analyze_volatility_data(financial_df.copy(), 10)
-# pprint(result2)
-# print("---------------------------------------------------")
-# result3 = analyze_volume_data(financial_df.copy(), 10)
-# pprint(result3)
-# print("---------------------------------------------------")
-# result4 = get_financial_data("005930")
-# pprint(result4)
+# main = analyze_main_data(financial_df.copy(), 5)
+# vola = analyze_volatility_data(financial_df.copy(), 10)
+# volume = analyze_volume_data(financial_df.copy(), 10)
+# company_data, _ = get_financial_data("005930")
+# analysis_result = get_llm_analysis(company_data, main, volume, vola)
+# print(analysis_result)
+
+# print(llm_analysis("005930"))
