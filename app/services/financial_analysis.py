@@ -914,7 +914,7 @@ def llm_analysis(stock_code):
 
     volatility_analysis = analyze_volatility_data(df.copy())
     if 'error' in volatility_analysis: return volatility_analysis
-        
+
     volume_analysis = analyze_volume_data(df.copy())
     if 'error' in volume_analysis: return volume_analysis
     

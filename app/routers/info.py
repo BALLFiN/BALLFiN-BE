@@ -8,7 +8,7 @@ from app.db.mongo import company_collection, stock_collection  # 가정: DB 컬�
 from pymongo import DESCENDING, ASCENDING
 import pandas as pd
 import talib
-from app.services.financial_analysis import get_yahoo_data, get_interest_rate, fetch_stock_data, combine_all_data, get_stock_info_yfinance
+from app.services.financial_analysis import get_yahoo_data, get_interest_rate, fetch_stock_data, combine_all_data, get_stock_info_yfinance, llm_analysis
 
 router = APIRouter()
 
@@ -434,4 +434,38 @@ async def get_company_data(stock_code: str):
             detail="데이터 처리 중 서버 내부 오류가 발생했습니다."
         )
 
+@router.get(
+    "/total_analysis/{stock_code}",
+    summary="개별 주식 상세페이지의 기술적 분석, 재무분석 페이지의 데이터를 llm으로 분석하여 제공하는 함수",
+    description="종목 코드를 받아 펀더멘털 및 기술적 지표를 LLM이 종합적으로 분석한 결과를 제공합니다."
+)
+async def get_llm_stock_analysis(stock_code: str):
+    try:
+        # 1. 핵심 로직인 llm_analysis 함수 호출
+        result = llm_analysis(stock_code)
+
+        # 2. 함수 반환 값에 'error' 키가 있는지 확인하여 성공/실패 분기 처리
+        if 'error' in result:
+            # llm_analysis 함수 내부에서 에러가 발생하여 {'error': ...}를 반환한 경우
+            # 예를 들어, 분석에 필요한 데이터가 부족한 경우
+            print(f"Analysis Error for /analysis/llm/{stock_code}: {result['error']}") # 콘솔 로그
+            raise HTTPException(
+                status_code=422, # 422: Unprocessable Entity (요청은 잘 됐으나, 내용이 처리 불가능)
+                detail=result['error']
+            )
+        
+        # 3. 성공 시, LLM 분석 결과 반환
+        return result
+
+    except HTTPException as e:
+        # 위에서 발생시킨 HTTPException을 그대로 전달
+        raise e
+    except Exception as e:
+        # llm_analysis 함수 실행 중 예상치 못한 에러가 발생한 경우 (DB 접속 실패 등)
+        # 500 Internal Server Error 반환
+        print(f"Server Error for /analysis/llm/{stock_code}: {e}") # 콘솔 로그
+        raise HTTPException(
+            status_code=500,
+            detail="분석 데이터를 생성하는 중 서버 내부 오류가 발생했습니다."
+        )
 
