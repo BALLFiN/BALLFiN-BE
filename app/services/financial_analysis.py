@@ -41,14 +41,27 @@ def get_yahoo_data(symbol: str):
         change = current_price - prev_close
         change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
         
-        historical_data = []
-        today = datetime.now()
-        for i in range(10):
-            past_date = today - timedelta(days=i)
-            historical_data.append({
-                "date": past_date.strftime('%Y-%m-%d'),
-                "price": round(current_price, 2)
-            })
+        # historical_data = []
+        # today = datetime.now()
+        # for i in range(10):
+        #     past_date = today - timedelta(days=i)
+        #     historical_data.append({
+        #         "date": past_date.strftime('%Y-%m-%d'),
+        #         "price": round(current_price, 2)
+        #     })
+		# 대신 아래와 같이 고정된 더미 데이터를 직접 할당합니다.
+        historical_data = [
+            {"date": "2025-09-04", "price": 3200},
+            {"date": "2025-09-03", "price": 3180},
+            {"date": "2025-09-02", "price": 3186},
+            {"date": "2025-09-01", "price": 3143},
+            {"date": "2025-08-29", "price": 3196},
+            {"date": "2025-08-28", "price": 3100},
+            {"date": "2025-08-27", "price": 3123},
+            {"date": "2025-08-26", "price": 3125},
+            {"date": "2025-08-25", "price": 3140},
+            {"date": "2025-08-22", "price": 3130}
+        ]
         
         return {
             "price": round(current_price, 2),
@@ -889,18 +902,12 @@ def combine_all_data(df, stock_code):
     # print('---------------------------')
     # print(company_data)
 
-    # 3. 각 섹션별 요약 분석을 생성합니다.
-    main_analysis['total_analysis'] = generate_simple_summary()
-    volume_analysis['total_analysis'] = generate_simple_summary()
-    company_data['total_analysis'] = generate_simple_summary()
-
     # 4. 최종 JSON 구조로 조합하여 반환합니다.
     combined_result = {
         "main_analysis": main_without_history,
         "volatility_analysis": volatility_without_history,
         "volume_analysis": volume_without_history,
-        "company_analysis": company_data,
-        "fin_total_analysis": "주요, 거래량, 변동성을 종합적으로 분석한 결과입니다"
+        "company_analysis": company_data
     }
     
     return combined_result
