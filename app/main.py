@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, user, post, news, chat, stock, info
+from app.routers import auth, user, post, news, chat, stock, info, alarm
 
 
 app = FastAPI()
@@ -22,3 +22,4 @@ app.include_router(chat.router, prefix="/api/chat")
 app.include_router(news.router, prefix="/api/news")
 app.include_router(stock.router, prefix="/api/stock")
 app.include_router(info.router, prefix="/api/info")
+app.include_router(alarm.router, prefix="/api/alarm")

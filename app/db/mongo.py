@@ -30,3 +30,4 @@ chat_sessions = db["chat_sessions"]
 chat_messages = db["chat_messages"]
 
 stock_collection = db["stock"]
+alarm_collection = db["alarms"]
