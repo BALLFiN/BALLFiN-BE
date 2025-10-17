@@ -21,7 +21,7 @@
       const password = document.getElementById("password").value;
 	  const name = document.getElementById("name").value;
 
-      const res = await fetch("http://localhost:8000/auth/register", {
+      const res = await fetch("http://localhost:8000/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

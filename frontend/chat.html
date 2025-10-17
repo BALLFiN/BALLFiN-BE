@@ -81,7 +81,7 @@
 		const token = localStorage.getItem("access_token");
 
 		async function loadChats() {
-			const res = await fetch("http://localhost:8000/chat/chats", {
+			const res = await fetch("http://localhost:8000/api/chat/chats", {
 				headers: { "Authorization": `Bearer ${token}` }
 			});
 			const chats = await res.json();
@@ -141,7 +141,7 @@
 		async function loadMessages() {
 			if (!currentChatId) return;
 
-			const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages`, {
+			const res = await fetch(`http://localhost:8000/api/chat/chats/${currentChatId}/messages`, {
 				headers: { "Authorization": `Bearer ${token}` }
 			});
 			const messages = await res.json();
@@ -179,7 +179,7 @@
 				const now = new Date();
 				const title = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
 
-				const res = await fetch("http://localhost:8000/chat/chats", {
+				const res = await fetch("http://localhost:8000/api/chat/chats", {
 					method: "POST",
 					headers: {
 						"Authorization": `Bearer ${token}`,
@@ -200,7 +200,7 @@
 
 			if (isStreaming) {
 				// ✅ 스트리밍 모드
-				const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages/stream`, {
+				const res = await fetch(`http://localhost:8000/api/chat/chats/${currentChatId}/messages/stream`, {
 					method: "POST",
 					headers: {
 						"Authorization": `Bearer ${token}`,
@@ -231,7 +231,7 @@
 				}
 			} else {
 				// ✅ 일반 모드
-				const res = await fetch(`http://localhost:8000/chat/chats/${currentChatId}/messages`, {
+				const res = await fetch(`http://localhost:8000/api/chat/chats/${currentChatId}/messages`, {
 					method: "POST",
 					headers: {
 						"Authorization": `Bearer ${token}`,
@@ -260,7 +260,7 @@
 			const newTitle = prompt("새 대화방 이름을 입력하세요");
 			if (!newTitle) return;
 
-			await fetch(`http://localhost:8000/chat/chats/${chatId}`, {
+			await fetch(`http://localhost:8000/api/chat/chats/${chatId}`, {
 				method: "PUT",
 				headers: {
 					"Authorization": `Bearer ${token}`,
@@ -281,7 +281,7 @@
 		async function deleteChat(chatId) {
 			if (!confirm("정말 삭제하시겠습니까?")) return;
 
-			await fetch(`http://localhost:8000/chat/chats/${chatId}`, {
+			await fetch(`http://localhost:8000/api/chat/chats/${chatId}`, {
 				method: "DELETE",
 				headers: { "Authorization": `Bearer ${token}` }
 			});

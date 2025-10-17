@@ -39,7 +39,7 @@
       }
 
       try {
-        const res = await fetch("http://localhost:8000/auth/check", {
+        const res = await fetch("http://localhost:8000/api/auth/check", {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -62,10 +62,10 @@
     async function loadCompanies() {
 			const token = localStorage.getItem("access_token");
       const [companyRes, favRes] = await Promise.all([
-        fetch("http://localhost:8000/user/companies", {
+        fetch("http://localhost:8000/api/user/companies", {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        fetch("http://localhost:8000/user/favorites", {
+        fetch("http://localhost:8000/api/user/favorites", {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -100,7 +100,7 @@
     // ✅ 즐겨찾기 추가
     async function addFavorite(ticker) {
 			const token = localStorage.getItem("access_token");
-      await fetch("http://localhost:8000/user/favorites", {
+      await fetch("http://localhost:8000/api/user/favorites", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -115,7 +115,7 @@
     // ✅ 즐겨찾기 제거
     async function removeFavorite(ticker) {
 			const token = localStorage.getItem("access_token");
-      await fetch("http://localhost:8000/user/favorites", {
+      await fetch("http://localhost:8000/api/user/favorites", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -133,7 +133,7 @@
 			const token = localStorage.getItem("access_token");
       const type = document.getElementById("feed-type").value;
 
-      let url = "http://localhost:8000/posts/";
+      let url = "http://localhost:8000/api/posts/";
       if (type === "news") url += "news";
       else if (type === "disclosure") url += "disclosures";
       else if (type === "favorites") url += "my-feed";
@@ -190,7 +190,7 @@
         return;
       }
 
-      const res = await fetch("http://localhost:8000/auth/check", {
+      const res = await fetch("http://localhost:8000/api/auth/check", {
         headers: { Authorization: `Bearer ${token}` }
       });
 

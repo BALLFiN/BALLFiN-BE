@@ -19,18 +19,11 @@ gpt = ChatOpenAI(
     streaming = True
     )
 
-gemini = ChatGoogleGenerativeAI(
-    model = "gemini-1.5-flash",
-    temperature=0,
-    api_key=os.getenv("GOOGLE_API_KEY"),
-    streaming = True
-)
-
 # 랭그래프 에이전트로 랩핑
 gpt_agent = create_agent(gpt)
-gemini_agent = create_agent(gemini)
 
-print("✅ gpt, Gemini 에이전트 준비 완료")
+
+print("✅ gpt 에이전트 준비 완료")
 
 
 
@@ -60,35 +53,10 @@ async def ask_llm_gpt(prompt: str) -> str:
         print(f"[ERROR] Gpt 응답 실패: {e}")
         return f"[오류] Gpt 응답 실패: {str(e)}"
 
-async def ask_llm_gemini(prompt: str) -> str:
-    """
-    Gemini(Pro)에게 질문(prompt)을 보내고 답변을 한 번에 받아온다. (Streaming ❌)
-    """
-    print("ask to gemini")
-    try:
-        response = gemini_agent.invoke(
-            {"messages": [
-                {"role": "user",
-                "content": prompt}]}
-                )
-        return response['messages'][-1].content
-    
-    except Exception as e:
-        print(f"[ERROR] Gemini 응답 실패: {e}")
-        return f"[오류] Gemini 응답 실패: {str(e)}"
 
 # ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gpt(prompt: str):
     async for msg, _ in gpt_agent.astream(            
-        {"messages": [{"role": "user", "content": prompt}]},
-        stream_mode="messages",
-    ):
-        if isinstance(msg, AIMessage) and msg.content:
-            yield msg.content
-
-# ✅ LangGraph 토큰 스트리밍 
-async def stream_llm_gemini(prompt: str):
-    async for msg, _ in gemini_agent.astream(
         {"messages": [{"role": "user", "content": prompt}]},
         stream_mode="messages",
     ):
