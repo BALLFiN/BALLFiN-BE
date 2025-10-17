@@ -21,6 +21,8 @@ def get_user_alarms(limit: int = 100, current_user: str = Depends(get_current_us
         .limit(limit)
     )
     print(current_user)
+    for alarm in user_alarms:
+        alarm["_id"] = str(alarm["_id"])
     # MongoDB의 ObjectId를 문자열로 변환하여 반환
     return [AlarmOut(**alarm) for alarm in user_alarms]
 
