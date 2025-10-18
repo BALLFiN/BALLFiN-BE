@@ -10,7 +10,7 @@ import pandas as pd
 import talib
 from app.services.financial_analysis import get_yahoo_data, get_interest_rate, fetch_stock_data, combine_all_data, get_stock_info_yfinance, llm_analysis
 
-router = APIRouter()
+router = APIRouter(tags=["Info"])
 
 # 티커 심볼 매핑
 TICKERS = {

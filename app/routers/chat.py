@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.services.chat_service import ask_llm_gpt, stream_llm_gpt, load_chat_history, format_history_to_prompt
 
 #from app.db.neo4j import neo4j_driver
-router = APIRouter()
+router = APIRouter(tags=["Chat"])
 
 # ✅ 새 대화방 생성
 @router.post("/chats", response_model=ChatSessionOut, 

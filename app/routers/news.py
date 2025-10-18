@@ -9,7 +9,7 @@ import math
 from datetime import timedelta
 from bson import ObjectId
 
-router = APIRouter()
+router = APIRouter(tags=["News"])
 
 @router.get(
     "/search",

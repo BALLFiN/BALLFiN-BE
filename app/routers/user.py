@@ -4,7 +4,7 @@ from app.core.security import get_current_user
 from app.db.mongo import user_collection, company_collection
 from typing import List, Dict
 
-router = APIRouter()
+router = APIRouter(tags=["User"])
 
 @router.get(
     "/companies",

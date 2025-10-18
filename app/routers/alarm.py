@@ -9,7 +9,7 @@ from datetime import datetime
 
 router = APIRouter()
 
-# ✅ 요구사항 2: 알림을 조회하는 API
+# ✅ 요구사항 1: 알림을 조회하는 API
 @router.get("/alarms", response_model=List[AlarmOut],
             summary="사용자 알림 목록 조회",
             description="현재 로그인한 사용자의 모든 알림을 최신순으로 조회합니다.")
@@ -26,20 +26,27 @@ def get_user_alarms(limit: int = 100, current_user: str = Depends(get_current_us
     # MongoDB의 ObjectId를 문자열로 변환하여 반환
     return [AlarmOut(**alarm) for alarm in user_alarms]
 
-# ✅ 요구사항 3: 개별 알림 삭제 API
-@router.delete("/alarms/{alarm_id}", status_code=status.HTTP_204_NO_CONTENT,
-               summary="개별 알림 삭제",
-               description="특정 ID를 가진 알림을 삭제합니다. 해당 알림의 소유자만 삭제할 수 있습니다.")
+# ✅ 요구사항 2: 개별 알림 삭제 API
+@router.delete(
+    "/alarms/{alarm_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="개별 알림 삭제",
+    description="특정 ID를 가진 알림을 삭제합니다. 해당 알림의 소유자만 삭제할 수 있습니다."
+)
 def delete_alarm(alarm_id: str, current_user: str = Depends(get_current_user)):
     if not ObjectId.is_valid(alarm_id):
         raise HTTPException(status_code=400, detail="유효하지 않은 알림 ID입니다.")
 
-    result = alarm_collection.delete_one( # ⭐️ 수정된 부분
-        {"_id": ObjectId(alarm_id), "user_id": current_user}
+    # ✅ user_email 기준으로 변경
+    result = alarm_collection.delete_one(
+        {"_id": ObjectId(alarm_id), "user_email": current_user}
     )
 
     if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="알림을 찾을 수 없거나 삭제 권한이 없습니다.")
+        raise HTTPException(
+            status_code=404,
+            detail="알림을 찾을 수 없거나 삭제 권한이 없습니다."
+        )
     return
 
 # ✅ 요구사항 3: 모든 알림 삭제 API
@@ -47,8 +54,9 @@ def delete_alarm(alarm_id: str, current_user: str = Depends(get_current_user)):
                summary="모든 알림 삭제",
                description="현재 로그인한 사용자의 모든 알림을 삭제합니다.")
 def delete_all_alarms(current_user: str = Depends(get_current_user)):
-    alarm_collection.delete_many({"user_id": current_user}) # ⭐️ 수정된 부분
+    alarm_collection.delete_many({"user_email": current_user})
     return
+
 
 # ✅ 요구사항 4: 특정 관심 기업 사용자들에게 알림 보내기 (관리자용)
 @router.post("/alarms/send",

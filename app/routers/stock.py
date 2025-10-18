@@ -6,7 +6,7 @@ from bson import ObjectId
 from app.db.mongo import stock_collection, user_collection
 from app.core.security import get_current_user
 
-router = APIRouter()
+router = APIRouter(tags=["Stock"])
 
 @router.get(
     "/search",

@@ -7,7 +7,7 @@ class AlarmSendIn(BaseModel):
     company_code: str = Field(..., description="알람을 보낼 대상 관심 기업 코드")
     alarm_type: str = Field(..., description="알람 종류")
     content: str = Field(..., description="알람 내용")
-    target_path: str = Field(..., description="알림 클릭 시 이동할 경로")
+    target_path: str = Field(None, description="알림 클릭 시 이동할 경로 (주가 신호는 생략 가능)")
     score: Optional[int] = Field(None, description="관련 점수 (선택 사항)")
 
     class Config:

@@ -6,7 +6,7 @@ from app.db.mongo import user_collection
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token, get_current_user
 from datetime import datetime
 
-router = APIRouter()
+router = APIRouter(tags=["Auth"])
 security = HTTPBearer()
 
 # ✅ 기본 알람 설정 (회원가입 알람 시 기본값)

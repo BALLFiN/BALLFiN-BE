@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from app.db.mongo import user_collection
 from app.core.security import get_current_user
 
-router = APIRouter(tags=["Settings"], prefix="/api/settings")
+router = APIRouter(tags=["Settings"])
 
 # ==============================
 # ✅ 전체 알람 설정 조회

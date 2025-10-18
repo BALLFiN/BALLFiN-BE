@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.mongo import user_collection, news_collection, disclosure_collection
 from app.core.security import get_current_user
 
-router = APIRouter()
+router = APIRouter(tags=["Post"])
 
 # 🔹 최신순 정렬 공통 함수
 def sort_by_date(docs):
