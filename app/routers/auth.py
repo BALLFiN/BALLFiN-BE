@@ -9,6 +9,20 @@ from datetime import datetime
 router = APIRouter()
 security = HTTPBearer()
 
+# ✅ 기본 알람 설정 (회원가입 알람 시 기본값)
+DEFAULT_ALARM_SETTINGS = {
+    "price_volatility": False,
+    "golden_cross": False,
+    "dead_cross": False,
+    "macd_golden": False,
+    "macd_dead": False,
+    "rsi_low": False,
+    "rsi_high": False,
+    "custom_buy": False,
+    "custom_sell": False,
+    "news_alert": False
+}
+
 @router.post("/register")
 def register(user: UserRegister):
     if user_collection.find_one({"email": user.email}):
@@ -21,6 +35,7 @@ def register(user: UserRegister):
         "password": hashed_pw,
         "name": user.name,
         "favorites": [],
+        "alarm_settings": DEFAULT_ALARM_SETTINGS,  # ✅ 기본 알람 설정 추가
         "created_at": datetime.utcnow(),     # ✅ 생성일 추가
         "last_login_at": None                 # ✅ 가입 시 로그인 기록 없음
     })
@@ -49,6 +64,7 @@ def login(user: UserLogin):
             "email": db_user['email'],
             "name": db_user['name'],
             "favorites": db_user['favorites'],
+            "alarm_settings": db_user["alarm_settings"],   # ✅ 프론트로 전달
             "created_at": db_user['created_at'].isoformat(),  # datetime을 문자열로 변환
             "last_login_at": db_user['last_login_at'].isoformat() # datetime을 문자열로 변환
         }
