@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from app.db.mongo import stock_collection, user_collection, alarm_collection, company_collection
 
+
 # ================================
 # ⚙️ 기본 설정
 # ================================
@@ -22,20 +23,40 @@ TICKERS = [
     '009150', '086280', '003490', '003230', '042700', '005830', '022100', '078930'
 ]
 
+
 # ================================
 # 📊 기술적 신호 계산 함수
 # ================================
 def calculate_signals(df: pd.DataFrame):
     df = df.sort_values("date")
 
+    # 이동평균선
     for w in [5, 20, 60, 120]:
         df[f"ma{w}"] = df["close"].rolling(w).mean()
 
+    # EMA (커스텀 전략용 Stage 계산용)
+    for w in [5, 20, 40]:
+        df[f"ema{w}"] = df["close"].ewm(span=w, adjust=False).mean()
+
+    # 기본 MACD
     ema12 = df["close"].ewm(span=12, adjust=False).mean()
     ema26 = df["close"].ewm(span=26, adjust=False).mean()
     df["macd"] = ema12 - ema26
     df["signal"] = df["macd"].ewm(span=9, adjust=False).mean()
 
+    # ✨ 커스텀 MACD 3세트 추가
+    def macd_pair(fast, slow, signal=9):
+        ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
+        ema_slow = df["close"].ewm(span=slow, adjust=False).mean()
+        macd = ema_fast - ema_slow
+        macd_signal = macd.ewm(span=signal, adjust=False).mean()
+        return macd, macd_signal
+
+    df["macd_high"], df["signal_high"] = macd_pair(5, 20)
+    df["macd_mid"], df["signal_mid"] = macd_pair(5, 40)
+    df["macd_low"], df["signal_low"] = macd_pair(20, 40)
+
+    # RSI
     delta = df["close"].diff()
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
@@ -44,12 +65,13 @@ def calculate_signals(df: pd.DataFrame):
     rs = avg_gain / avg_loss
     df["rsi"] = 100 - (100 / (1 + rs))
 
+    # 변동성
     df["price_volatility"] = abs(df["close"].pct_change()) * 100
     return df
 
 
 # ================================
-# 🧠 회사명 캐싱 (성능 개선)
+# 🧠 회사명 캐싱
 # ================================
 def build_company_name_map():
     mapping = {}
@@ -59,7 +81,7 @@ def build_company_name_map():
 
 
 # ================================
-# 🚀 스케줄러용 일일 알람 생성 함수
+# 🚀 일일 알람 생성 함수
 # ================================
 def run_daily_alarm_job(target_date: datetime = None):
     target_date = target_date or datetime.now().date()
@@ -70,7 +92,7 @@ def run_daily_alarm_job(target_date: datetime = None):
         "date": {"$gte": datetime(target_date.year, target_date.month, target_date.day)}
     })
     if not has_data:
-        print("❌ 오늘 날짜의 일봉 데이터가 없습니다. 알람 생성하지 않음.")
+        print("❌ 오늘 날짜의 일봉 데이터가 없습니다.")
         return
 
     company_map = build_company_name_map()
@@ -91,6 +113,7 @@ def run_daily_alarm_job(target_date: datetime = None):
 
         triggered_signals = []
 
+        # ✅ 표준 알람
         if latest["price_volatility"] >= 10:
             triggered_signals.append(("price_volatility",
                 f"💹 {display_name}의 주가가 전일 대비 10% 이상 급변했습니다. 변동성이 확대되고 있습니다."
@@ -108,7 +131,6 @@ def run_daily_alarm_job(target_date: datetime = None):
                     f"⚠️ {display_name}의 이동평균선이 역배열로 전환되었습니다. 하락 추세 전환 가능성을 유의하세요."
                 ))
 
-        if prev is not None:
             if prev["macd"] <= prev["signal"] and latest["macd"] > latest["signal"]:
                 triggered_signals.append(("macd_golden",
                     f"📈 {display_name}에서 MACD 골든크로스가 발생했습니다. 단기 상승 모멘텀 신호입니다."
@@ -118,7 +140,6 @@ def run_daily_alarm_job(target_date: datetime = None):
                     f"📉 {display_name}에서 MACD 데드크로스가 발생했습니다. 단기 조정 신호로 해석됩니다."
                 ))
 
-        if prev is not None:
             if prev["rsi"] >= 30 and latest["rsi"] < 30:
                 triggered_signals.append(("rsi_low",
                     f"😟 {display_name}의 RSI가 30 이하로 하락했습니다. 과매도 구간 진입 가능성이 있습니다."
@@ -128,6 +149,61 @@ def run_daily_alarm_job(target_date: datetime = None):
                     f"😎 {display_name}의 RSI가 80을 돌파했습니다. 과매수 신호로 단기 조정이 나타날 수 있습니다."
                 ))
 
+            # ✅ 커스텀 EMA 기반 신호 (전환 감지 추가)
+            try:
+                e5, e20, e40 = latest["ema5"], latest["ema20"], latest["ema40"]
+                if e5 > e20 > e40: stage = 1
+                elif e20 > e5 > e40: stage = 2
+                elif e20 > e40 > e5: stage = 3
+                elif e40 > e20 > e5: stage = 4
+                elif e40 > e5 > e20: stage = 5
+                elif e5 > e40 > e20: stage = 6
+                else: stage = 0
+
+                # 전일 Stage
+                pe5, pe20, pe40 = prev["ema5"], prev["ema20"], prev["ema40"]
+                if pe5 > pe20 > pe40: prev_stage = 1
+                elif pe20 > pe5 > pe40: prev_stage = 2
+                elif pe20 > pe40 > pe5: prev_stage = 3
+                elif pe40 > pe20 > pe5: prev_stage = 4
+                elif pe40 > pe5 > pe20: prev_stage = 5
+                elif pe5 > pe40 > pe20: prev_stage = 6
+                else: prev_stage = 0
+
+                cond_stage = stage in [1, 6]
+                prev_cond_stage = prev_stage in [1, 6]
+                n = 2
+
+                # 오늘 MACD 3세트 상승 판정
+                macd_up = all(df["macd_high"].iloc[-i] > df["macd_high"].iloc[-i-1] for i in range(1, n+1)) and \
+                          all(df["macd_mid"].iloc[-i] > df["macd_mid"].iloc[-i-1] for i in range(1, n+1)) and \
+                          all(df["macd_low"].iloc[-i] > df["macd_low"].iloc[-i-1] for i in range(1, n+1))
+
+                # 전일 MACD 3세트 상승 판정
+                # (len(df) 충분한지 체크)
+                if len(df) >= (n + 2):
+                    prev_macd_up = all(df["macd_high"].iloc[-i-1] > df["macd_high"].iloc[-i-2] for i in range(1, n+1)) and \
+                                   all(df["macd_mid"].iloc[-i-1] > df["macd_mid"].iloc[-i-2] for i in range(1, n+1)) and \
+                                   all(df["macd_low"].iloc[-i-1] > df["macd_low"].iloc[-i-2] for i in range(1, n+1))
+                else:
+                    prev_macd_up = False
+
+                # ⬇️ 전환 감지: 오늘은 조건 충족, 어제는 미충족
+                if (cond_stage and macd_up) and not (prev_cond_stage and prev_macd_up):
+                    triggered_signals.append(("custom_buy",
+                        f"🚀 {display_name}의 단기·중기·장기 MACD가 모두 상승 중이며, EMA(5>20>40) 정배열 상태입니다. 강한 상승 모멘텀 신호입니다."
+                    ))
+
+                cond_sell_high = latest["macd_high"] < latest["signal_high"] and prev["macd_high"] >= prev["signal_high"]
+                cond_sell_mid = latest["macd_mid"] < latest["signal_mid"] and prev["macd_mid"] >= prev["signal_mid"]
+                if cond_sell_high and cond_sell_mid:
+                    triggered_signals.append(("custom_sell",
+                        f"📉 {display_name}의 MACD(5,20)와 MACD(5,40)가 동시에 데드크로스를 발생시켰습니다. 단기 조정 가능성이 있습니다."
+                    ))
+            except Exception as e:
+                print(f"⚠️ {display_name} 커스텀 계산 오류: {e}")
+
+        # 알람 저장
         for signal_key, message in triggered_signals:
             target_users = list(user_collection.find({
                 "favorites": code,
@@ -183,7 +259,7 @@ def backfill_alarms_for_year(stock_code="005930", start_date=None):
 
     users = list(user_collection.find({"favorites": stock_code}))
     if not users:
-        print("⚠️ 해당 종목을 관심등록한 유저가 없습니다.")
+        print("⚠️ 관심등록한 유저 없음.")
         return
 
     inserted = 0
@@ -191,20 +267,87 @@ def backfill_alarms_for_year(stock_code="005930", start_date=None):
         prev, latest = df.iloc[i - 1], df.iloc[i]
         triggered_signals = []
 
+        # 일반 알람
         if latest["price_volatility"] >= 10:
-            triggered_signals.append(("price_volatility", f"💹 {display_name}의 주가가 전일 대비 10% 이상 급변했습니다. 변동성이 확대되고 있습니다."))
-        if not (prev["ma5"] > prev["ma20"] > prev["ma60"] > prev["ma120"]) and (latest["ma5"] > latest["ma20"] > latest["ma60"] > latest["ma120"]):
-            triggered_signals.append(("golden_cross", f"🌟 {display_name}의 이동평균선이 정배열로 전환되었습니다. 상승 추세 신호로 해석됩니다."))
-        if not (prev["ma5"] < prev["ma20"] < prev["ma60"] < prev["ma120"]) and (latest["ma5"] < latest["ma20"] < latest["ma60"] < latest["ma120"]):
-            triggered_signals.append(("dead_cross", f"⚠️ {display_name}의 이동평균선이 역배열로 전환되었습니다. 하락 추세 전환 가능성을 유의하세요."))
+            triggered_signals.append(("price_volatility",
+                f"💹 {display_name}의 주가가 전일 대비 10% 이상 급변했습니다. 변동성이 확대되고 있습니다."
+            ))
+        if not (prev["ma5"] > prev["ma20"] > prev["ma60"] > prev["ma120"]) and \
+           (latest["ma5"] > latest["ma20"] > latest["ma60"] > latest["ma120"]):
+            triggered_signals.append(("golden_cross",
+                f"🌟 {display_name}의 이동평균선이 정배열로 전환되었습니다. 상승 추세 신호로 해석됩니다."
+            ))
+        if not (prev["ma5"] < prev["ma20"] < prev["ma60"] < prev["ma120"]) and \
+           (latest["ma5"] < latest["ma20"] < latest["ma60"] < latest["ma120"]):
+            triggered_signals.append(("dead_cross",
+                f"⚠️ {display_name}의 이동평균선이 역배열로 전환되었습니다. 하락 추세 전환 가능성을 유의하세요."
+            ))
         if prev["macd"] <= prev["signal"] and latest["macd"] > latest["signal"]:
-            triggered_signals.append(("macd_golden", f"📈 {display_name}에서 MACD 골든크로스가 발생했습니다. 단기 상승 모멘텀 신호입니다."))
+            triggered_signals.append(("macd_golden",
+                f"📈 {display_name}에서 MACD 골든크로스가 발생했습니다. 단기 상승 모멘텀 신호입니다."
+            ))
         if prev["macd"] >= prev["signal"] and latest["macd"] < latest["signal"]:
-            triggered_signals.append(("macd_dead", f"📉 {display_name}에서 MACD 데드크로스가 발생했습니다. 단기 조정 신호로 해석됩니다."))
+            triggered_signals.append(("macd_dead",
+                f"📉 {display_name}에서 MACD 데드크로스가 발생했습니다. 단기 조정 신호로 해석됩니다."
+            ))
         if prev["rsi"] >= 30 and latest["rsi"] < 30:
-            triggered_signals.append(("rsi_low", f"😟 {display_name}의 RSI가 30 이하로 하락했습니다. 과매도 구간 진입 가능성이 있습니다."))
+            triggered_signals.append(("rsi_low",
+                f"😟 {display_name}의 RSI가 30 이하로 하락했습니다. 과매도 구간 진입 가능성이 있습니다."
+            ))
         if prev["rsi"] <= 80 and latest["rsi"] > 80:
-            triggered_signals.append(("rsi_high", f"😎 {display_name}의 RSI가 80을 돌파했습니다. 과매수 신호로 단기 조정이 나타날 수 있습니다."))
+            triggered_signals.append(("rsi_high",
+                f"😎 {display_name}의 RSI가 80을 돌파했습니다. 과매수 신호로 단기 조정이 나타날 수 있습니다."
+            ))
+
+        # ✅ 커스텀 EMA 기반 신호 (전환 감지 추가)
+        try:
+            e5, e20, e40 = latest["ema5"], latest["ema20"], latest["ema40"]
+            if e5 > e20 > e40: stage = 1
+            elif e20 > e5 > e40: stage = 2
+            elif e20 > e40 > e5: stage = 3
+            elif e40 > e20 > e5: stage = 4
+            elif e40 > e5 > e20: stage = 5
+            elif e5 > e40 > e20: stage = 6
+            else: stage = 0
+
+            pe5, pe20, pe40 = prev["ema5"], prev["ema20"], prev["ema40"]
+            if pe5 > pe20 > pe40: prev_stage = 1
+            elif pe20 > pe5 > pe40: prev_stage = 2
+            elif pe20 > pe40 > pe5: prev_stage = 3
+            elif pe40 > pe20 > pe5: prev_stage = 4
+            elif pe40 > pe5 > pe20: prev_stage = 5
+            elif pe5 > pe40 > pe20: prev_stage = 6
+            else: prev_stage = 0
+
+            cond_stage = stage in [1, 6]
+            prev_cond_stage = prev_stage in [1, 6]
+            n = 2
+
+            macd_up = all(df["macd_high"].iloc[i-j] > df["macd_high"].iloc[i-j-1] for j in range(1, n+1)) and \
+                      all(df["macd_mid"].iloc[i-j] > df["macd_mid"].iloc[i-j-1] for j in range(1, n+1)) and \
+                      all(df["macd_low"].iloc[i-j] > df["macd_low"].iloc[i-j-1] for j in range(1, n+1))
+
+            if i >= (n + 1):
+                prev_macd_up = all(df["macd_high"].iloc[i-1-j] > df["macd_high"].iloc[i-1-j-1] for j in range(1, n+1)) and \
+                               all(df["macd_mid"].iloc[i-1-j] > df["macd_mid"].iloc[i-1-j-1] for j in range(1, n+1)) and \
+                               all(df["macd_low"].iloc[i-1-j] > df["macd_low"].iloc[i-1-j-1] for j in range(1, n+1))
+            else:
+                prev_macd_up = False
+
+            # ⬇️ 전환 감지
+            if (cond_stage and macd_up) and not (prev_cond_stage and prev_macd_up):
+                triggered_signals.append(("custom_buy",
+                    f"🚀 {display_name}의 단기·중기·장기 MACD가 모두 상승 중이며, EMA(5>20>40) 정배열 상태입니다. 강한 상승 모멘텀 신호입니다."
+                ))
+
+            cond_sell_high = latest["macd_high"] < latest["signal_high"] and prev["macd_high"] >= prev["signal_high"]
+            cond_sell_mid = latest["macd_mid"] < latest["signal_mid"] and prev["macd_mid"] >= prev["signal_mid"]
+            if cond_sell_high and cond_sell_mid:
+                triggered_signals.append(("custom_sell",
+                    f"📉 {display_name}의 MACD(5,20)와 MACD(5,40)가 동시에 데드크로스를 발생시켰습니다. 단기 조정 가능성이 있습니다."
+                ))
+        except Exception as e:
+            print(f"⚠️ {display_name} 커스텀 계산 오류 (백필): {e}")
 
         for signal_key, message in triggered_signals:
             target_users = [u for u in users if u.get("alarm_settings", {}).get(signal_key)]

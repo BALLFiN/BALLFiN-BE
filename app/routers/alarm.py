@@ -7,7 +7,7 @@ from app.core.security import get_current_user
 from bson import ObjectId
 from datetime import datetime
 
-router = APIRouter()
+router = APIRouter(tags=["Alarm"])
 
 # ✅ 요구사항 1: 알림을 조회하는 API
 @router.get("/alarms", response_model=List[AlarmOut],
