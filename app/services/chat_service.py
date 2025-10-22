@@ -2,10 +2,9 @@ import os
 from dotenv import load_dotenv
 from app.db.mongo import chat_messages
 from bson import ObjectId
-from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
-from app.models.llm.graph import create_agent
+from langchain_openai import ChatOpenAI
+from app.models.llm.graph import create_agent,current_kst
 
 
 load_dotenv()
@@ -15,25 +14,27 @@ load_dotenv()
 gpt = ChatOpenAI(
     model="gpt-4o-mini",
     api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0,
+    temperature=0.5,
     streaming = True
     )
 
 # 랭그래프 에이전트로 랩핑
 gpt_agent = create_agent(gpt)
-
-
 print("✅ gpt 에이전트 준비 완료")
 
 
 
 def format_history_to_prompt(history: list, current_question: str) -> str:
-    dialogue = "답변시 오늘 날짜를 말하지는 말아줘."
+    dialogue = ""
     for msg in history:
         role = "User" if msg["role"] == "user" else "Assistant"
         dialogue += f"{role}: {msg['content']}\n"
     dialogue += f"User: {current_question}"
     return dialogue
+
+
+def prepend_time(p: str) -> str:
+    return f"현재 시각은 {current_kst()} KST입니다. 이 시간 기준으로 답변해 주세요.\n{p}"
 
 # ✅ 일반 호출 (한 번에 전체 답변 받기)
 async def ask_llm_gpt(prompt: str) -> str:
@@ -41,11 +42,12 @@ async def ask_llm_gpt(prompt: str) -> str:
     GPT-4o에게 질문(prompt)을 보내고 답변을 받아온다. (스트리밍 ❌)
     """
     print("ask to gpt")
+    time_prompt = prepend_time(prompt)
     try:
-        response = await gpt_agent.ainvoke(
+        response = gpt_agent.invoke(
             {"messages": [
                 {"role": "user",
-                "content": prompt}]}
+                "content": time_prompt}]}
                 )
         return response['messages'][-1].content
     
@@ -56,12 +58,15 @@ async def ask_llm_gpt(prompt: str) -> str:
 
 # ✅ LangGraph 토큰 스트리밍 
 async def stream_llm_gpt(prompt: str):
+    time_prompt = prepend_time(prompt)
     async for msg, _ in gpt_agent.astream(            
-        {"messages": [{"role": "user", "content": prompt}]},
+        {"messages": [{"role": "user", "content": time_prompt}]},
         stream_mode="messages",
     ):
         if isinstance(msg, AIMessage) and msg.content:
             yield msg.content
+
+
 
 async def load_chat_history(chat_id: str, limit: int = 10) -> list:
     """
