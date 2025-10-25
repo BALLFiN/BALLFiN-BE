@@ -31,3 +31,4 @@ chat_messages = db["chat_messages"]
 
 stock_collection = db["stock"]
 alarm_collection = db["alarms"]
+reports = db["corp_report_summary"]
