@@ -12,10 +12,8 @@ load_dotenv()
 
 # langchain 래퍼 모델로 사용해야 랭그래프와 호환 가능함
 gpt = ChatOpenAI(
-    model="gpt-4o-mini",
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0.5,
-    streaming = True
+    model="gpt-4o",
+    api_key=os.getenv("OPENAI_API_KEY")
     )
 
 # 랭그래프 에이전트로 랩핑
