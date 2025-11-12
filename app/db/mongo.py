@@ -23,7 +23,7 @@ db = client["BarbellAI"]
 
 user_collection = db["users"]
 company_collection = db["company"]
-news_collection = db['test_news']
+news_collection = db['news']
 disclosure_collection = db['disclosures']
 
 chat_sessions = db["chat_sessions"]
