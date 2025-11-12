@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 import yfinance as yf
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
 from app.db.mongo import company_collection, stock_collection  # 가정: DB 컬렉션은 여기서 가져옵니다.
@@ -436,36 +436,120 @@ async def get_company_data(stock_code: str):
 
 @router.get(
     "/total_analysis/{stock_code}",
-    summary="개별 주식 상세페이지의 기술적 분석, 재무분석 페이지의 데이터를 llm으로 분석하여 제공하는 함수",
-    description="종목 코드를 받아 펀더멘털 및 기술적 지표를 LLM이 종합적으로 분석한 결과를 제공합니다."
+    summary="개별 주식 상세페이지의 기술적 분석, 재무분석 페이지의 데이터를 llm으로 분석하여 제공하는 함수 (캐싱 적용)",
+    description="종목 코드를 받아 펀더멘털 및 기술적 지표를 LLM이 종합적으로 분석한 결과를 제공합니다. **하루 이내의 캐시된 데이터가 있으면 바로 반환합니다.**"
 )
 async def get_llm_stock_analysis(stock_code: str):
+    
+    # 현재 company_collection 객체가 사용 가능하다고 가정
+    
     try:
-        # 1. 핵심 로직인 llm_analysis 함수 호출
-        result = llm_analysis(stock_code)
-
-        # 2. 함수 반환 값에 'error' 키가 있는지 확인하여 성공/실패 분기 처리
-        if 'error' in result:
-            # llm_analysis 함수 내부에서 에러가 발생하여 {'error': ...}를 반환한 경우
-            # 예를 들어, 분석에 필요한 데이터가 부족한 경우
-            print(f"Analysis Error for /analysis/llm/{stock_code}: {result['error']}") # 콘솔 로그
-            raise HTTPException(
-                status_code=422, # 422: Unprocessable Entity (요청은 잘 됐으나, 내용이 처리 불가능)
-                detail=result['error']
-            )
+        # 1. MongoDB에서 캐시된 데이터 조회 시도
         
-        # 3. 성공 시, LLM 분석 결과 반환
-        return result
+        # 24시간 전 시점 계산 (UTC 또는 KST 등 통일된 타임존 사용 필수)
+        # DB에 저장된 시간이 UTC라면, UTC로 계산
+        cache_cutoff_time = datetime.now() - timedelta(hours=24)
+        
+        # stock_code로 문서를 찾고, llm_analysis.updated_at이 24시간 이내인 데이터가 있는지 확인
+        # find_one은 await이 필요할 수 있습니다 (AsyncMotorClient 사용 시)
+        company_doc = company_collection.find_one(
+            {"stock_code": stock_code}
+        )
+        
+        # 문서를 찾았고, llm_analysis 필드가 존재하며, 최근 24시간 이내에 업데이트된 경우
+        if (
+            company_doc and
+            "llm_analysis" in company_doc and
+            "updated_at" in company_doc["llm_analysis"] and
+            company_doc["llm_analysis"]["updated_at"] >= cache_cutoff_time
+        ):
+            print(f"✅ Cache Hit: Returning LLM analysis for {stock_code} from DB.")
+            # 캐시된 분석 결과를 반환
+            return company_doc["llm_analysis"]
+
+        # 2. 캐시가 없거나 오래된 경우: 새로운 분석 수행 (핵심 로직 호출)
+        print(f"❌ Cache Miss or Expired: Running new LLM analysis for {stock_code}.")
+        new_analysis_result = llm_analysis(stock_code)
+        
+        # 3. 함수 반환 값에 'error' 키가 있는지 확인하여 성공/실패 분기 처리
+        if 'error' in new_analysis_result:
+            print(f"Analysis Error: {new_analysis_result['error']}")
+            raise HTTPException(
+                status_code=422,
+                detail=new_analysis_result['error']
+            )
+            
+        # 4. 분석 성공 시, DB 업데이트를 위한 필드 추가 및 업데이트 수행
+        
+        # 현재 시간 (DB 저장 시점의 타임존으로 통일)
+        now = datetime.now() 
+        
+        # llm_analysis 딕셔너리에 'updated_at' 필드 추가
+        llm_data_to_save = {
+            "llm_analysis": {
+                **new_analysis_result, # 기존 분석 결과
+                "updated_at": now      # 현재 업데이트 시간
+            }
+        }
+        
+        # MongoDB에 업데이트
+        # $set으로 llm_analysis 필드 전체를 덮어쓰거나 새로 생성합니다.
+        # upsert=True: stock_code에 해당하는 문서가 없으면 새로 생성합니다.
+        company_collection.update_one(
+            {"stock_code": stock_code},
+            {"$set": llm_data_to_save},
+            upsert=True
+        )
+        print(f"💾 Analysis saved to DB for {stock_code} at {now}.")
+
+        # 5. 새로운 LLM 분석 결과 반환
+        return llm_data_to_save["llm_analysis"]
 
     except HTTPException as e:
-        # 위에서 발생시킨 HTTPException을 그대로 전달
+        # LLM 분석 에러 등을 그대로 전달
         raise e
     except Exception as e:
-        # llm_analysis 함수 실행 중 예상치 못한 에러가 발생한 경우 (DB 접속 실패 등)
+        # DB 접속 실패 등 예상치 못한 에러
+        print(f"Server Error for /analysis/llm/{stock_code}: {e}")
         # 500 Internal Server Error 반환
-        print(f"Server Error for /analysis/llm/{stock_code}: {e}") # 콘솔 로그
         raise HTTPException(
             status_code=500,
-            detail="분석 데이터를 생성하는 중 서버 내부 오류가 발생했습니다."
+            detail="분석 데이터를 생성/조회하는 중 서버 내부 오류가 발생했습니다."
         )
+
+
+# @router.get(
+#     "/total_analysis/{stock_code}",
+#     summary="개별 주식 상세페이지의 기술적 분석, 재무분석 페이지의 데이터를 llm으로 분석하여 제공하는 함수",
+#     description="종목 코드를 받아 펀더멘털 및 기술적 지표를 LLM이 종합적으로 분석한 결과를 제공합니다."
+# )
+# async def get_llm_stock_analysis(stock_code: str):
+#     try:
+#         # 1. 핵심 로직인 llm_analysis 함수 호출
+#         result = llm_analysis(stock_code)
+#         print(result)
+#         # 2. 함수 반환 값에 'error' 키가 있는지 확인하여 성공/실패 분기 처리
+#         if 'error' in result:
+#             # llm_analysis 함수 내부에서 에러가 발생하여 {'error': ...}를 반환한 경우
+#             # 예를 들어, 분석에 필요한 데이터가 부족한 경우
+#             print(f"Analysis Error for /analysis/llm/{stock_code}: {result['error']}") # 콘솔 로그
+#             raise HTTPException(
+#                 status_code=422, # 422: Unprocessable Entity (요청은 잘 됐으나, 내용이 처리 불가능)
+#                 detail=result['error']
+#             )
+        
+#         # 3. 성공 시, LLM 분석 결과 반환
+#         return result
+
+#     except HTTPException as e:
+#         # 위에서 발생시킨 HTTPException을 그대로 전달
+#         raise e
+#     except Exception as e:
+#         # llm_analysis 함수 실행 중 예상치 못한 에러가 발생한 경우 (DB 접속 실패 등)
+#         # 500 Internal Server Error 반환
+#         print(f"Server Error for /analysis/llm/{stock_code}: {e}") # 콘솔 로그
+#         raise HTTPException(
+#             status_code=500,
+#             detail="분석 데이터를 생성하는 중 서버 내부 오류가 발생했습니다."
+#         )
 
