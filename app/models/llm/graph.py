@@ -6,7 +6,7 @@ from langchain_tavily import TavilySearch
 from langchain_openai import ChatOpenAI
 from langchain.agents import Tool
 from langgraph.prebuilt import create_react_agent
-from app.db.vectordb import vectordb
+#from app.db.vectordb import vectordb
 from app.db.mongo import reports
 
 from langchain.tools import StructuredTool
@@ -77,47 +77,47 @@ tavily_tool = TavilySearch(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-# 2. 질의용 RAG 함수
-def get_full_article_from_chunk(chunk_doc):
-    doc_id = chunk_doc.metadata.get("doc_id")
-    if not doc_id:
-        return chunk_doc.page_content
-    docs = vectordb.get(where={"doc_id": doc_id})
-    return " ".join(docs["documents"])
+# # 2. 질의용 RAG 함수
+# def get_full_article_from_chunk(chunk_doc):
+#     doc_id = chunk_doc.metadata.get("doc_id")
+#     if not doc_id:
+#         return chunk_doc.page_content
+#     docs = vectordb.get(where={"doc_id": doc_id})
+#     return " ".join(docs["documents"])
 
 
-def rag_search(content: str, corp: str) -> str:
-    print("🔍 RAG 검색 도구 사용:", corp, content)
+# def rag_search(content: str, corp: str) -> str:
+#     print("🔍 RAG 검색 도구 사용:", corp, content)
 
-    hits = vectordb.max_marginal_relevance_search(
-        content,
-        filter={"corp": corp},
-        k=3,
-        fetch_k=100,
-        lambda_multiplier=0.5
-    )
+#     hits = vectordb.max_marginal_relevance_search(
+#         content,
+#         filter={"corp": corp},
+#         k=3,
+#         fetch_k=100,
+#         lambda_multiplier=0.5
+#     )
 
-    if not hits:
-        return f"'{corp}' 관련 뉴스가 없습니다. 추가 검색 불필요"
+#     if not hits:
+#         return f"'{corp}' 관련 뉴스가 없습니다. 추가 검색 불필요"
 
-    seen_doc_ids = set()
-    results = []
+#     seen_doc_ids = set()
+#     results = []
 
-    for h in hits:
-        doc_id = h.metadata.get("doc_id")
-        if doc_id in seen_doc_ids:
-            continue
-        seen_doc_ids.add(doc_id)
+#     for h in hits:
+#         doc_id = h.metadata.get("doc_id")
+#         if doc_id in seen_doc_ids:
+#             continue
+#         seen_doc_ids.add(doc_id)
 
-        results.append(
-            f"[날짜] {h.metadata.get('date', '날짜없음')}\n"
-            f"[제목] {h.metadata.get('title', '제목없음')}\n"
-            f"[영향도 점수] {h.metadata.get('impact_score', 'N/A')}\n"
-            f"[링크] {h.metadata.get('link', '')}\n"
-            f"[본문] {get_full_article_from_chunk(h)}"
-        )
+#         results.append(
+#             f"[날짜] {h.metadata.get('date', '날짜없음')}\n"
+#             f"[제목] {h.metadata.get('title', '제목없음')}\n"
+#             f"[영향도 점수] {h.metadata.get('impact_score', 'N/A')}\n"
+#             f"[링크] {h.metadata.get('link', '')}\n"
+#             f"[본문] {get_full_article_from_chunk(h)}"
+#         )
 
-    return "\n\n".join(results)
+#     return "\n\n".join(results)
 
 # 웹 검색 도구 랩핑
 def web_search(query: str):
@@ -147,18 +147,18 @@ def create_agent(
             ),
             args_schema=None  # 단일 인자 query라 schema 불필요
         ),
-        StructuredTool.from_function(
-            func=rag_search, 
-            name="Similar_News_Search",
-            description=(
-                 "벡터DB(RAG)에서 특정 기업과 관련된 과거 금융·경제 뉴스 기사를 검색하는 도구입니다. "
-                 "날짜, 제목,영향도 점수, 링크, 본문을 포함한 상세 정보를 제공합니다. "
-                 "검색 가능한 기업 목록은 다음과 같습니다.:"
-                 "대한항공,삼성전자,에코프로, LG에너지솔루션,오리온,카카오,SK이노베이션,SK하이닉스,현대자동차,기아,한화솔루션,아모레퍼시픽"
-                 "이 외의 기업에 대해선 이 도구를 사용하지 않습니다." 
-            ),
-            args_schema=RagSearchInput
-        ),
+        # StructuredTool.from_function(
+        #     func=rag_search, 
+        #     name="Similar_News_Search",
+        #     description=(
+        #          "벡터DB(RAG)에서 특정 기업과 관련된 과거 금융·경제 뉴스 기사를 검색하는 도구입니다. "
+        #          "날짜, 제목,영향도 점수, 링크, 본문을 포함한 상세 정보를 제공합니다. "
+        #          "검색 가능한 기업 목록은 다음과 같습니다.:"
+        #          "대한항공,삼성전자,에코프로, LG에너지솔루션,오리온,카카오,SK이노베이션,SK하이닉스,현대자동차,기아,한화솔루션,아모레퍼시픽"
+        #          "이 외의 기업에 대해선 이 도구를 사용하지 않습니다." 
+        #     ),
+        #     args_schema=RagSearchInput
+        # ),
             StructuredTool.from_function(
         func=get_investment_reports,
         name="Investment_Report_Search",
